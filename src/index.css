@@ -1,0 +1,214 @@
+@import 'tailwindcss';
+
+@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource-variable/familjen-grotesk';
+@import '@fontsource-variable/jetbrains-mono';
+
+/**
+ * FilterPod — "broadcast console"
+ *
+ * The visual language borrows from studio hardware: a dark rack-panel body, amber
+ * backlighting like a VU meter, machined mono numerals for timecode, and sage green
+ * for the "clean / ready" signal. It suits an app whose whole job is a precise,
+ * mechanical operation on audio.
+ */
+
+@theme {
+  /* Panel — near-black with a green cast, like anodized rack metal. */
+  --color-panel-950: #0b0d0c;
+  --color-panel-900: #111413;
+  --color-panel-850: #171b19;
+  --color-panel-800: #1e2321;
+  --color-panel-700: #2a302d;
+  --color-panel-600: #3a423e;
+
+  /* Ember — VU-meter backlight. The one loud colour, used sparingly. */
+  --color-ember-300: #ffc98a;
+  --color-ember-400: #ffab52;
+  --color-ember-500: #ff8c2b;
+  --color-ember-600: #e56f13;
+
+  /* Sage — "clean", "ready", "filtered". */
+  --color-sage-300: #a8d5b5;
+  --color-sage-400: #7cbd90;
+  --color-sage-500: #55a06d;
+
+  /* Signal red, for failures only. */
+  --color-alarm-400: #ff6b5a;
+  --color-alarm-500: #e14b38;
+
+  --color-ink-100: #f4f2ee;
+  --color-ink-300: #c6c3bc;
+  --color-ink-500: #8e8b84;
+  --color-ink-600: #6b6862;
+
+  --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, sans-serif;
+  --font-sans: 'Familjen Grotesk Variable', ui-sans-serif, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --radius-panel: 14px;
+
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-panel-950);
+    color: var(--color-ink-100);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    /* The app is a full-screen shell; the page itself never scrolls. */
+    overscroll-behavior: none;
+  }
+
+  /* A faint warm bloom at the top, as if something behind the panel is lit. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(120% 60% at 50% -10%, rgb(255 140 43 / 0.09), transparent 60%),
+      radial-gradient(80% 40% at 100% 100%, rgb(85 160 109 / 0.05), transparent 70%);
+  }
+
+  /* Film grain. Keeps large dark fields from looking flat and digital. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
+@layer components {
+  /* Machined numerals for timecode and byte counts. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+  }
+
+  /* The etched label above a control, like silkscreen on a front panel. */
+  .silkscreen {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-ink-600);
+  }
+
+  .panel {
+    background: linear-gradient(180deg, var(--color-panel-850) 0%, var(--color-panel-900) 100%);
+    border: 1px solid var(--color-panel-700);
+    border-radius: var(--radius-panel);
+  }
+
+  /* Horizontal machining lines, used on the app's header rails. */
+  .rack-texture {
+    background-image: repeating-linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.022) 0px,
+      rgb(255 255 255 / 0.022) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  }
+
+  .glow-ember {
+    box-shadow:
+      0 0 0 1px rgb(255 140 43 / 0.35),
+      0 6px 26px -6px rgb(255 140 43 / 0.45);
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-ember-400);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* Page and list entrances. One orchestrated reveal beats scattered micro-motion. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise 0.42s var(--ease-snap) both;
+}
+
+@keyframes pulse-ember {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.animate-pulse-ember {
+  animation: pulse-ember 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
