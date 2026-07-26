@@ -1,9 +1,6 @@
 package app.filterpod
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
@@ -11,8 +8,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
-import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.media3.session.MediaSessionService
 
 /**
@@ -75,47 +70,21 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /**
-     * Satisfies the foreground-service contract immediately.
+    /*
+     * No notification is posted here on purpose.
      *
-     * `startForegroundService()` gives the service about five seconds to call
-     * `startForeground()` or Android kills the whole app with
-     * ForegroundServiceDidNotStartInTimeException. Media3 does post a media notification
-     * of its own, but only once the session has a loaded item — which is later than the
-     * deadline when the service is started before anything is loaded. So a minimal
-     * placeholder goes up first; Media3 replaces it as soon as there is something to
-     * show.
+     * An earlier version put up a placeholder to satisfy the five-second
+     * startForeground deadline. That deadline only existed because the service was
+     * being started from play(), before anything was loaded — fixed since. The
+     * placeholder then became the problem: it held the foreground notification slot, so
+     * Media3's media-style notification never replaced it and there were no transport
+     * controls, and it could not simply be cancelled because a foreground service's own
+     * notification is not removable while it is in the foreground.
+     *
+     * MediaSessionService already manages notification and foreground state for a
+     * loaded session. Letting it do that is both simpler and the only way to get real
+     * controls.
      */
-    private fun promoteToForeground() {
-        val manager = getSystemService(NotificationManager::class.java)
-        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW)
-                    .apply { setShowBadge(false) },
-            )
-        }
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("FilterPod")
-            .setContentText("Preparing playback…")
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setOngoing(true)
-            .setSilent(true)
-            .build()
-
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-        )
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Before super, so the deadline is met even if Media3 has nothing to show yet.
-        promoteToForeground()
-        return super.onStartCommand(intent, flags, startId)
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -127,7 +96,14 @@ class PlaybackService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) = emitStatus(exo)
         })
 
-        session = MediaSession.Builder(this, exo).build()
+        session = MediaSession.Builder(this, exo).build().also {
+            // Registering the session is what hands Media3 responsibility for the media
+            // notification and for promoting the service to the foreground. Building a
+            // session and only returning it from onGetSession is not enough: that path
+            // serves incoming controller connections, so without this the service stayed
+            // started-but-background and no transport controls were ever posted.
+            addSession(it)
+        }
         handler.post(ticker)
 
         // Service creation is asynchronous, so commands issued between
@@ -277,8 +253,6 @@ class PlaybackService : MediaSessionService() {
         @Volatile
         var pendingPlay: Boolean = false
 
-        private const val CHANNEL_ID = "filterpod_playback"
-        private const val NOTIFICATION_ID = 1001
 
         /**
          * The running service, so the plugin can reach it without binding.
