@@ -63,6 +63,7 @@ export interface TranscriberPlugin {
     requestId: string
     episodeId: string
     fileKey: string
+    url?: string
     model: string
     windows?: Array<{ startSec: number; endSec: number }>
   }): Promise<{ words: TimedWord[] }>

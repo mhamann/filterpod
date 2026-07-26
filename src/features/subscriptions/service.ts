@@ -34,7 +34,10 @@ export async function subscribeToFeed(
   const podcastId = podcastIdFor(feedUrl)
   const autoDownloadLimit = options.autoDownloadLimit ?? 3
   const subscription = await persistSubscription(podcastId, {
-    autoDownload: options.autoDownload ?? true,
+    // Off by default. Subscribing to a show is not a request to fill the phone with it:
+    // episodes stream, and downloading is for the ones somebody deliberately wants
+    // offline. Still available per-show for exactly that.
+    autoDownload: options.autoDownload ?? false,
     autoDownloadLimit,
   })
 

@@ -389,6 +389,8 @@ async function transcribeNextChunk(session: Session): Promise<void> {
     const words = await getPlatform().transcriber.transcribe({
       episodeId: session.episode.id,
       fileKey: session.fileKey,
+      // Used only when the episode is not on disk; the native side prefers the file.
+      url: session.episode.audioUrl,
       model: session.model,
       windows: [{ startSec, endSec }],
       signal: controller.signal,

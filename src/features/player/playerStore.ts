@@ -129,37 +129,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       listWordOverrides(),
     ])
 
-    // Transcription reads local audio, so the episode has to be on disk first.
-    // Downloading is cheap (network, not CPU); it is the filtering that is expensive,
-    // and that is what now happens on demand.
-    //
-    // The file itself is checked, not just the record. A download interrupted before
-    // its final rename leaves a `.part` behind, and a record claiming "downloaded"
-    // then points at a path that does not exist — which surfaces as an opaque
-    // ExoPlayer "Source error" rather than anything a user could act on.
+    /*
+     * Downloaded episodes play from disk; everything else streams.
+     *
+     * Downloading is no longer a precondition for playing, only a way to keep an episode
+     * offline. Filtering used to force it to be one — transcription needed a local file —
+     * but both the player and the transcriber now read streamed audio through one shared
+     * cache, so an episode is fetched once whether or not it is ever saved.
+     *
+     * The file itself is checked, not just the record. A download interrupted before its
+     * final rename leaves a `.part` behind, and a record claiming "downloaded" then points
+     * at a path that does not exist; streaming is a far better answer to that than the
+     * opaque ExoPlayer "Source error" it used to produce.
+     */
     const fileKey = download?.fileKey ?? fileKeyFor(episodeId)
     const audioPresent =
       download?.state === 'downloaded' && (await platform.files.exists(fileKey))
 
-    if (!audioPresent) {
-      if (download?.state === 'downloaded') {
-        // Record and disk disagree; re-download rather than leaving it unplayable.
-        await enqueueDownload(episodeId)
-      }
-      set({
-        blockedReason:
-          download?.state === 'downloaded'
-            ? 'That download is incomplete — fetching it again.'
-            : 'Download this episode first.',
-      })
-      setTimeout(() => {
-        if (get().blockedReason) set({ blockedReason: undefined })
-      }, 5000)
-      return
+    if (!audioPresent && download?.state === 'downloaded') {
+      // Record and disk disagree. Stream now, and fetch it again in the background.
+      await enqueueDownload(episodeId)
     }
 
     const startAtSec = progress?.positionSec ?? 0
-    const url = await platform.files.toPlayableUrl(fileKey)
+    const url = audioPresent
+      ? await platform.files.toPlayableUrl(fileKey)
+      : episode.audioUrl
 
     unsubscribeStatus?.()
     unsubscribeSkip?.()

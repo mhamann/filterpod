@@ -275,6 +275,7 @@ function createNativeTranscriber(): TranscriberPlatform {
           requestId,
           episodeId: req.episodeId,
           fileKey: req.fileKey,
+          url: req.url,
           model: req.model,
           windows: req.windows,
         })

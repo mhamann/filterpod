@@ -176,8 +176,23 @@ class TranscriberPlugin : Plugin() {
                 loadContext(model)
                 log("transcribe $requestId: whisper context loaded")
 
+                /*
+                 * Downloaded audio is decoded from disk; streamed audio is decoded through
+                 * the same cache the player streams through, so the episode is fetched once
+                 * rather than once per consumer.
+                 *
+                 * A cache read blocks and fetches on a miss, which is what makes filtering
+                 * a stream safe: this cannot fail merely because the audio has not arrived
+                 * yet, so a failure here still means a real failure and the pipeline can go
+                 * on treating it as one.
+                 */
                 val audio = File(context.filesDir, "filterpod/$fileKey")
-                if (!audio.exists()) throw IllegalStateException("audio file missing")
+                val streamUrl = call.getString("url")
+                if (!audio.exists() && streamUrl.isNullOrEmpty()) {
+                    throw IllegalStateException("audio file missing and no stream url")
+                }
+                val streaming = !audio.exists()
+                log("transcribe $requestId: source=${if (streaming) "stream" else "file"}")
 
                 val words = JSArray()
                 // A null window means "the whole file"; the decoder treats it that way.
@@ -191,7 +206,16 @@ class TranscriberPlugin : Plugin() {
                     // no way to tell from the outside without this.
                     log("chunk ${startSec?.toInt()}-${endSec?.toInt()}s: decoding…")
                     val decodeStart = System.currentTimeMillis()
-                    val pcm = AudioDecoder.decodeWindow(audio, startSec, endSec)
+                    val pcm = if (streaming) {
+                        // Opened per window: MediaExtractor holds the stream position, and
+                        // reusing one across chunks would have it seeking backwards through
+                        // the cache for no benefit.
+                        MediaCache.openForDecoding(context, streamUrl!!).use { source ->
+                            AudioDecoder.decodeWindow(source, fileKey, startSec, endSec)
+                        }
+                    } else {
+                        AudioDecoder.decodeWindow(audio, startSec, endSec)
+                    }
                     val decodeMs = System.currentTimeMillis() - decodeStart
                     log("chunk ${startSec?.toInt()}s: decoded ${pcm.size / 16000}s in ${decodeMs}ms, running asr on ${threadCount()} threads…")
 
