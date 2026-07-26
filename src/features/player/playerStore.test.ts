@@ -82,6 +82,25 @@ vi.mock('@/data/repo', () => ({
   saveProgress: async () => {},
 }))
 
+/** Progress rows the restore path scans, newest first. */
+const progressRows: Array<{
+  episodeId: string
+  positionSec: number
+  durationSec: number
+  played: boolean
+  lastPlayedAt: number
+}> = []
+
+vi.mock('@/data/db', () => ({
+  db: {
+    progress: {
+      orderBy: () => ({
+        reverse: () => ({ limit: () => ({ toArray: async () => progressRows }) }),
+      }),
+    },
+  },
+}))
+
 vi.mock('@/features/downloads/downloadManager', () => ({
   enqueueDownload: async () => {},
   fileKeyFor: (id: string) => `audio/${id}`,
@@ -111,6 +130,7 @@ vi.mock('@/features/filter/liveFilter', () => ({
   maybeResume: vi.fn(),
 }))
 
+const { startLiveFilter } = await import('@/features/filter/liveFilter')
 const { usePlayerStore } = await import('./playerStore')
 
 describe('opening an episode', () => {
@@ -148,5 +168,72 @@ describe('opening an episode', () => {
     expect(calls.indexOf('play')).toBeGreaterThan(
       calls.findIndex((call) => call.startsWith('setFilterSpans')),
     )
+  })
+})
+
+/**
+ * Restoring is a display-only operation.
+ *
+ * The whole point is that opening the app costs nothing: no foreground service, no
+ * ~150MB speech model, no transcription for an episode you may not have come back for.
+ * If any of that starts on launch the feature has become a battery bug, so these assert
+ * on what the player and the filter pipeline were asked to do, not just on what is shown.
+ */
+describe('restoring the last episode', () => {
+  beforeEach(() => {
+    calls.length = 0
+    serviceRunning = false
+    progressRows.length = 0
+    vi.clearAllMocks()
+    usePlayerStore.setState({ episode: null, state: 'idle', loaded: false })
+  })
+
+  it('shows what was playing without touching the player', async () => {
+    progressRows.push({
+      episodeId: 'e1',
+      positionSec: 942,
+      durationSec: 3600,
+      played: false,
+      lastPlayedAt: 10,
+    })
+
+    await usePlayerStore.getState().restoreLast()
+
+    const state = usePlayerStore.getState()
+    expect(state.episode?.id).toBe('e1')
+    expect(state.positionSec).toBe(942)
+    expect(state.loaded).toBe(false)
+    expect(calls).toEqual([])
+    expect(startLiveFilter).not.toHaveBeenCalled()
+  })
+
+  it('ignores a finished episode, and one barely started', async () => {
+    progressRows.push(
+      { episodeId: 'e1', positionSec: 3599, durationSec: 3600, played: true, lastPlayedAt: 30 },
+      { episodeId: 'e1', positionSec: 2, durationSec: 3600, played: false, lastPlayedAt: 20 },
+    )
+
+    await usePlayerStore.getState().restoreLast()
+
+    expect(usePlayerStore.getState().episode).toBeNull()
+  })
+
+  it('opens for real the first time play is pressed', async () => {
+    progressRows.push({
+      episodeId: 'e1',
+      positionSec: 942,
+      durationSec: 3600,
+      played: false,
+      lastPlayedAt: 10,
+    })
+    await usePlayerStore.getState().restoreLast()
+
+    await usePlayerStore.getState().play()
+
+    // Guards against the recursion this invites: open() short-circuits when the episode
+    // is already current, which would hand straight back to play() and round again.
+    expect(calls).toContain('load')
+    expect(calls).toContain('play')
+    expect(usePlayerStore.getState().loaded).toBe(true)
   })
 })

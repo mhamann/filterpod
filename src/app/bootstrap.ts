@@ -8,6 +8,7 @@ import {
 } from '@/features/downloads/downloadManager'
 import { refreshAndAutoDownload } from '@/features/subscriptions/service'
 import { prefetchModelInBackground } from '@/features/filter/modelStore'
+import { usePlayerStore } from '@/features/player/playerStore'
 
 /**
  * Startup sequence.
@@ -76,6 +77,11 @@ export async function bootstrap(): Promise<void> {
 
   watchNetwork()
   watchSkipIncrements()
+
+  // Put back whatever was being listened to, so the app opens where it was left. This
+  // only restores the display state — see restoreLast; nothing is loaded or transcribed
+  // until play is pressed.
+  void usePlayerStore.getState().restoreLast()
 
   // The speech model is the one prerequisite filtering cannot start without, so it is
   // fetched in the background here rather than becoming a wall on first play.

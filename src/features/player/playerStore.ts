@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { AnalyzedRange, Episode, FilterSpan, Podcast, Progress } from '@/core/types'
 import { analyzedUntil, isAnalyzed, mergeRanges, toFilteredPosition } from '@/core/filterMath'
 import { getPlatform } from '@/platform'
+import { db } from '@/data/db'
 import {
   getDownload,
   getEpisode,
@@ -70,8 +71,19 @@ interface PlayerState {
   catchingUp: boolean
   blockedReason?: string
   queue: string[]
+  /**
+   * Whether the episode on screen is actually loaded into the player.
+   *
+   * False for one restored at startup. Restoring shows what you were listening to; it
+   * deliberately does not start the playback service or the filter pipeline, because
+   * opening the app is not a request to transcribe anything. Everything that would talk
+   * to the player checks this and opens for real first.
+   */
+  loaded: boolean
 
   open(episodeId: string, autoPlay?: boolean): Promise<void>
+  /** Puts the last-played episode back on screen, without loading or filtering it. */
+  restoreLast(): Promise<void>
   play(): Promise<void>
   pause(): Promise<void>
   toggle(): Promise<void>
@@ -100,6 +112,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   durationSec: 0,
   skippedSec: 0,
   rate: 1,
+  loaded: false,
   preparing: false,
   modelProgress: null,
   catchingUp: false,
@@ -112,7 +125,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // open path again would tear down and restart filtering, throwing away the chunk
     // in flight — so a second tap on Play used to reset progress to zero rather than
     // start playback.
-    if (get().episode?.id === episodeId && get().state !== 'idle') {
+    if (get().episode?.id === episodeId && get().loaded && get().state !== 'idle') {
       if (autoPlay) await get().play()
       return
     }
@@ -202,6 +215,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       startAtSec,
     )
     await platform.player.setRate(settings.playbackRate)
+    set({ loaded: true })
 
     // Analyze a lead-in, then start; the rest is filtered while the audio plays.
     try {
@@ -302,8 +316,63 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (autoPlay) await get().play()
   },
 
+  /**
+   * Restores the last episode that was being listened to.
+   *
+   * Only the display state: what it is, where you were, and the cuts already known from
+   * a previous session. Loading the player is left until play is pressed, so launching
+   * the app costs nothing — no foreground service, no speech model, no transcription for
+   * an episode that may not be the one you came here for.
+   */
+  async restoreLast() {
+    if (get().episode) return
+
+    const recent = await db.progress.orderBy('lastPlayedAt').reverse().limit(10).toArray()
+    // Something finished is not "what you were listening to", and neither is an episode
+    // that was opened and abandoned in the first few seconds.
+    const last = recent.find((row) => !row.played && row.positionSec > 5)
+    if (!last) return
+
+    const episode = await getEpisode(last.episodeId)
+    if (!episode) return
+
+    const [podcast, map, settings] = await Promise.all([
+      getPodcast(episode.podcastId),
+      getFilterMap(episode.id),
+      getSettings(),
+    ])
+
+    // Another episode may have been opened while this was reading from disk.
+    if (get().episode) return
+
+    set({
+      episode,
+      podcast: podcast ?? null,
+      spans: map?.spans ?? [],
+      analyzedRanges: map?.analyzedRanges ?? [],
+      state: 'paused',
+      positionSec: last.positionSec,
+      durationSec: last.durationSec || episode.durationSec || 0,
+      skippedSec: 0,
+      rate: settings.playbackRate,
+      loaded: false,
+      preparing: false,
+      modelProgress: null,
+      catchingUp: false,
+      error: undefined,
+    })
+  },
+
   async play() {
-    const { analyzedRanges, positionSec } = get()
+    const { episode, loaded, analyzedRanges, positionSec } = get()
+
+    // Restored from a previous session and never actually loaded. Pressing play is the
+    // point at which the user has asked for this episode, so open it properly now.
+    if (episode && !loaded) {
+      await get().open(episode.id, true)
+      return
+    }
+
     // Refuse to start into unanalyzed audio; the pipeline is already working on it.
     if (analyzedRanges.length > 0 && !isAnalyzed(analyzedRanges, positionSec)) {
       set({ catchingUp: true })
@@ -315,6 +384,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   async pause() {
+    if (!get().loaded) return
     await getPlatform().player.pause()
     const { episode, positionSec, durationSec } = get()
     if (episode) {
@@ -331,6 +401,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   async seek(positionSec) {
     const target = Math.max(0, positionSec)
+
+    // Scrubbing a restored episode moves where it will start from, rather than loading
+    // the player to honour a seek nobody has asked to hear yet. Persisted, because the
+    // resume point is read back from storage when it is eventually opened.
+    const { episode, loaded, durationSec } = get()
+    if (episode && !loaded) {
+      set({ positionSec: target })
+      const settings = await getSettings()
+      await saveProgress(episode.id, target, durationSec, settings.completionThresholdSec)
+      return
+    }
+
     await getPlatform().player.seek(target)
     set({ positionSec: target })
 
@@ -359,7 +441,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   async setRate(rate) {
-    await getPlatform().player.setRate(rate)
+    // Applied to the player at load time, so a restored episode only needs the value.
+    if (get().loaded) await getPlatform().player.setRate(rate)
     set({ rate })
   },
 
@@ -368,7 +451,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (!episode) return
     const map = await getFilterMap(episode.id)
     if (!map) return
-    await getPlatform().player.setFilterSpans(map.spans)
+    if (get().loaded) await getPlatform().player.setFilterSpans(map.spans)
     set({ spans: map.spans, analyzedRanges: mergeRanges(map.analyzedRanges) })
   },
 
@@ -394,6 +477,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       spans: [],
       analyzedRanges: [],
       state: 'idle',
+      loaded: false,
       preparing: false,
       catchingUp: false,
     })
