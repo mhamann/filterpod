@@ -1,5 +1,6 @@
 import type { AnalyzedRange, Episode, FilterMap, FilterProfile, FilterSpan } from '@/core/types'
 import {
+  analyzedSec,
   analyzedUntil,
   mergeRanges,
   normalizeSpans,
@@ -33,8 +34,20 @@ import { sortAndDedupe, spansFromMatches } from './buildFilterMap'
  *    the playhead is what keeps this from quietly becoming the eager pipeline again.
  */
 
-/** Analyzed before playback is allowed to start. The wait the user actually feels. */
-const LEAD_IN_SEC = 90
+/**
+ * Analyzed before playback is allowed to start. The wait the user actually feels.
+ *
+ * This is a latency budget, not an accuracy one: it is sized so that pressing play — or
+ * jumping to a new spot — produces audio in a couple of seconds. Transcription runs at
+ * roughly 5x realtime in the foreground on a Pixel 7 Pro, so fifteen seconds of audio
+ * costs about three to transcribe. Ninety seconds here, which is what this was, cost
+ * closer to thirty, and made every seek feel like the app had hung.
+ *
+ * A short lead-in is safe because it is only the starting cushion. The pump immediately
+ * widens it toward [TARGET_LEAD_SEC] while the audio plays, and the player will not run
+ * past analyzed audio in any case.
+ */
+const LEAD_IN_SEC = 15
 
 /** How far ahead of the playhead to stay. Work pauses once this much is buffered. */
 const TARGET_LEAD_SEC = 240
@@ -43,10 +56,25 @@ const TARGET_LEAD_SEC = 240
 const RESUME_LEAD_SEC = 150
 
 /**
- * Audio transcribed per step. Large enough to amortize model setup, small enough that
- * the lead-in is not dominated by one oversized chunk.
+ * Largest step, used once there is a comfortable cushion. Long chunks are the most
+ * efficient way to transcribe — per-call overhead is amortized over more audio — but a
+ * long chunk is also the longest anyone can be made to wait for a single result.
  */
 const CHUNK_SEC = 45
+
+/**
+ * Step used when there is no cushion: at a cold start, and immediately after a seek.
+ *
+ * Deliberately small. Nothing can play until the first chunk of a new region lands, so
+ * its length *is* the time-to-first-audio; everything after it is absorbed by playback.
+ */
+const FIRST_CHUNK_SEC = 15
+
+/** Step used while the cushion is still thin, trading some throughput for responsiveness. */
+const RAMP_CHUNK_SEC = 30
+
+/** Cushion above which [RAMP_CHUNK_SEC] gives way to full-size chunks. */
+const RAMP_UNTIL_SEC = 60
 
 /** Padding around a flagged cue, absorbing cue timing slop before ASR looks closer. */
 const CUE_WINDOW_PAD_SEC = 4
@@ -77,6 +105,18 @@ export interface LiveFilterCallbacks {
   onError(message: string): void
 }
 
+/**
+ * Attempts at a single chunk before the stretch is abandoned.
+ *
+ * There has to be a limit, and abandoning has to mean *marking it analyzed*, because the
+ * player treats unanalyzed audio as impassable. A stretch that can never be transcribed
+ * and is never given up on pins the playhead in front of it forever: the episode simply
+ * stops, permanently, with no way for the listener to get past it. That is a worse
+ * failure than the alternative, which is that one abandoned stretch plays unfiltered —
+ * so the give-up path reports an error rather than doing it silently.
+ */
+const MAX_CHUNK_ATTEMPTS = 2
+
 interface Session {
   episode: Episode
   fileKey: string
@@ -86,11 +126,32 @@ interface Session {
   spans: FilterSpan[]
   ranges: AnalyzedRange[]
   positionSec: number
-  /** Where the next chunk will be taken from. */
-  cursorSec: number
   controller: AbortController
+  /**
+   * The chunk being transcribed, so a seek can cancel it.
+   *
+   * Without this a jump had to wait out whatever was already running — up to fifteen
+   * seconds of work on audio the listener had just navigated away from — before the new
+   * position could even be started on.
+   */
+  chunk: { startSec: number; endSec: number; controller: AbortController } | null
+  /** Failed attempts per chunk start, so a bad stretch is retried but not forever. */
+  attempts: Map<number, number>
   callbacks: LiveFilterCallbacks
   durationSec: number
+}
+
+/**
+ * Where the next chunk starts: the end of contiguous coverage ahead of the playhead.
+ *
+ * Derived rather than carried. An independently advanced cursor could drift away from
+ * the playhead — a chunk that failed advanced it past the gap it had just left behind —
+ * and coverage then grew from the cursor while the playhead stayed pinned at a hole
+ * nothing would ever come back to fill. Deriving it means the first thing transcribed is
+ * always the audio immediately in front of the listener.
+ */
+function nextChunkStart(session: Session): number {
+  return analyzedUntil(session.ranges, session.positionSec)
 }
 
 let active: Session | null = null
@@ -148,8 +209,9 @@ export async function startLiveFilter(options: {
     spans,
     ranges,
     positionSec: startAtSec,
-    cursorSec: analyzedUntil(ranges, startAtSec),
     controller: new AbortController(),
+    chunk: null,
+    attempts: new Map(),
     callbacks: options.callbacks,
     durationSec: episode.durationSec ?? 0,
   }
@@ -201,10 +263,20 @@ export function updatePosition(positionSec: number): void {
 
 /** Called after a seek: work resumes from wherever coverage runs out at the new spot. */
 export function retargetLiveFilter(positionSec: number): void {
+  console.log(`[filter] retarget position=${Math.round(positionSec)} active=${!!active}`)
   if (!active) return
-  active.positionSec = positionSec
-  active.cursorSec = analyzedUntil(active.ranges, positionSec)
-  void pump(active)
+  const session = active
+  session.positionSec = positionSec
+
+  // Cancel work the listener has just navigated away from. Whatever is in flight was
+  // chosen for the old position; if it no longer sits in the window ahead of the new one
+  // it is finishing purely to be thrown away, and nothing can start until it does.
+  const chunk = session.chunk
+  if (chunk && !(chunk.endSec > positionSec && chunk.startSec <= positionSec + TARGET_LEAD_SEC)) {
+    chunk.controller.abort()
+  }
+
+  void pump(session)
 }
 
 export function stopLiveFilter(): void {
@@ -219,7 +291,7 @@ export function activeEpisodeId(): string | null {
 /** True when the episode is fully analyzed from the current playhead onward. */
 function reachedEnd(session: Session): boolean {
   if (!session.durationSec) return false
-  return session.cursorSec >= session.durationSec - 0.5
+  return nextChunkStart(session) >= session.durationSec - 0.5
 }
 
 let pumping = false
@@ -231,11 +303,23 @@ let pumping = false
  * burning battery on audio the user may never reach.
  */
 async function pump(session: Session): Promise<void> {
-  if (pumping || active !== session) return
+  // A pump already in flight will pick up the new position on its next iteration, so
+  // that case is silent. A stale session is not: it means work was requested for an
+  // episode nobody is listening to any more, which should not happen and is otherwise
+  // indistinguishable from the pipeline simply having nothing to do.
+  if (active !== session) {
+    console.log('[filter] pump requested for a session that is no longer active')
+    return
+  }
+  if (pumping) return
   pumping = true
   try {
     while (active === session && !session.controller.signal.aborted && !reachedEnd(session)) {
       const lead = analyzedUntil(session.ranges, session.positionSec) - session.positionSec
+      console.log(
+        `[filter] pump position=${Math.round(session.positionSec)} lead=${Math.round(lead)} ` +
+          `next=${Math.round(nextChunkStart(session))} ranges=${JSON.stringify(session.ranges.map((r) => [Math.round(r.startSec), Math.round(r.endSec)]))}`,
+      )
       if (lead >= TARGET_LEAD_SEC) break
       await transcribeNextChunk(session)
     }
@@ -267,17 +351,39 @@ export function maybeResume(positionSec: number): void {
   if (lead < RESUME_LEAD_SEC) void pump(active)
 }
 
+/**
+ * How much audio to take next, scaled to the cushion already in hand.
+ *
+ * With no cushion the chunk length is exactly what the user is waiting through, so it
+ * stays short; once playback has a comfortable buffer nobody is waiting on any single
+ * result and longer chunks transcribe the same audio for less overhead. This is what
+ * lets a seek into unexamined audio resume in a few seconds while steady-state playback
+ * still runs at full-size chunks.
+ */
+function chunkLengthFor(session: Session): number {
+  const lead = analyzedUntil(session.ranges, session.positionSec) - session.positionSec
+  if (lead < FIRST_CHUNK_SEC) return FIRST_CHUNK_SEC
+  if (lead < RAMP_UNTIL_SEC) return RAMP_CHUNK_SEC
+  return CHUNK_SEC
+}
+
 async function transcribeNextChunk(session: Session): Promise<void> {
-  // Jump over anything already covered — either transcribed earlier this session, or
-  // vouched for by a publisher transcript. This is what makes cue-narrowing pay off.
-  const startSec = analyzedUntil(session.ranges, session.cursorSec)
+  // Starts at the frontier ahead of the playhead, so anything already covered — whether
+  // transcribed earlier or vouched for by a publisher transcript — is stepped over, and
+  // any hole in front of the listener is filled before work continues past it.
+  const startSec = nextChunkStart(session)
+  const length = chunkLengthFor(session)
   const endSec = session.durationSec
-    ? Math.min(session.durationSec, startSec + CHUNK_SEC)
-    : startSec + CHUNK_SEC
-  if (endSec <= startSec) {
-    session.cursorSec = startSec
-    return
-  }
+    ? Math.min(session.durationSec, startSec + length)
+    : startSec + length
+  if (endSec <= startSec) return
+
+  // Chained to the session's, so stopping the session still cancels the chunk, while a
+  // seek can cancel just this chunk without tearing the session down.
+  const controller = new AbortController()
+  const abortChunk = () => controller.abort()
+  session.controller.signal.addEventListener('abort', abortChunk)
+  session.chunk = { startSec, endSec, controller }
 
   try {
     const words = await getPlatform().transcriber.transcribe({
@@ -285,10 +391,10 @@ async function transcribeNextChunk(session: Session): Promise<void> {
       fileKey: session.fileKey,
       model: session.model,
       windows: [{ startSec, endSec }],
-      signal: session.controller.signal,
+      signal: controller.signal,
     })
 
-    if (active !== session || session.controller.signal.aborted) return
+    if (active !== session || controller.signal.aborted) return
 
     const compiled = compileWordlist(session.profile, session.overrides)
     const matches = matchWords(sortAndDedupe(words), compiled)
@@ -296,18 +402,45 @@ async function transcribeNextChunk(session: Session): Promise<void> {
 
     session.spans = normalizeSpans([...session.spans, ...chunkSpans], session.profile.mergeGapSec)
     session.ranges = mergeRanges([...session.ranges, { startSec, endSec }])
-    session.cursorSec = endSec
+    session.attempts.delete(startSec)
 
     await persist(session, reachedEnd(session) ? 'ready' : 'partial')
     session.callbacks.onUpdate(session.spans, session.ranges)
   } catch (error) {
-    if (session.controller.signal.aborted) return
-    const message = error instanceof Error ? error.message : String(error)
-    // Advance past the failed chunk rather than retrying forever; a single undecodable
-    // stretch should not wedge the whole episode.
-    session.cursorSec = endSec
-    session.callbacks.onError(message)
+    // A chunk cancelled because the listener moved is not a failure, and must not count
+    // against this stretch — the audio was never examined, and saying otherwise would
+    // let a few seeks mark a region analyzed that nobody ever looked at.
+    if (controller.signal.aborted) return
+    abandonOrRetry(session, startSec, endSec, error)
+  } finally {
+    session.controller.signal.removeEventListener('abort', abortChunk)
+    if (session.chunk?.controller === controller) session.chunk = null
   }
+}
+
+/**
+ * Handles a chunk that failed to transcribe.
+ *
+ * Retries a couple of times — most failures here are transient — and then marks the
+ * stretch analyzed so the playhead is not walled in behind it. See [MAX_CHUNK_ATTEMPTS]
+ * for why giving up is the lesser evil; the error is reported either way so this is
+ * never a silent hole in the filtering.
+ */
+function abandonOrRetry(
+  session: Session,
+  startSec: number,
+  endSec: number,
+  error: unknown,
+): void {
+  const message = error instanceof Error ? error.message : String(error)
+  const attempts = (session.attempts.get(startSec) ?? 0) + 1
+  session.attempts.set(startSec, attempts)
+  session.callbacks.onError(message)
+
+  if (attempts < MAX_CHUNK_ATTEMPTS) return
+
+  session.ranges = mergeRanges([...session.ranges, { startSec, endSec }])
+  session.callbacks.onUpdate(session.spans, session.ranges)
 }
 
 /**
@@ -400,8 +533,10 @@ async function persist(
     source: existing?.source === 'transcript-only' ? existing.source : source,
     engineVersion: ENGINE_VERSION,
     wordlistVersion: WORDLIST_VERSION,
+    // Share of the episode actually examined, not how far the frontier has reached —
+    // with cue-narrowing and abandoned stretches those are not the same number.
     progress: session.durationSec
-      ? Math.min(1, session.cursorSec / session.durationSec)
+      ? Math.min(1, analyzedSec(session.ranges) / session.durationSec)
       : 0,
     createdAt: existing?.createdAt ?? Date.now(),
     skippedSec: totalSkippedSec(session.spans),
@@ -413,4 +548,7 @@ export const LIVE_FILTER_TUNING = {
   TARGET_LEAD_SEC,
   RESUME_LEAD_SEC,
   CHUNK_SEC,
+  FIRST_CHUNK_SEC,
+  RAMP_CHUNK_SEC,
+  RAMP_UNTIL_SEC,
 }

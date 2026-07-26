@@ -3,12 +3,15 @@ package app.filterpod
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.collect.ImmutableList
 
 /**
  * Playback, running as a foreground service.
@@ -40,6 +43,16 @@ class PlaybackService : MediaSessionService() {
     private val handler = Handler(Looper.getMainLooper())
     private var spans: List<FilterSpan> = emptyList()
     private var skippedMs: Long = 0
+
+    /**
+     * Skip increments for the notification and lock-screen buttons.
+     *
+     * Live values, not constructor arguments: they come from a user setting that can
+     * change mid-episode, and ExoPlayer's own increments are fixed at build time. See
+     * [SkipPlayer].
+     */
+    private var skipBackMs: Long = pendingSkipBackMs
+    private var skipForwardMs: Long = pendingSkipForwardMs
 
     /** Set by the plugin so skip and status events reach the web layer. */
     var listener: PlaybackListener? = null
@@ -96,7 +109,9 @@ class PlaybackService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) = emitStatus(exo)
         })
 
-        session = MediaSession.Builder(this, exo).build().also {
+        session = MediaSession.Builder(this, SkipPlayer(exo))
+            .setMediaButtonPreferences(skipButtons())
+            .build().also {
             // Registering the session is what hands Media3 responsibility for the media
             // notification and for promoting the service to the foreground. Building a
             // session and only returning it from onGetSession is not enough: that path
@@ -119,14 +134,24 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /** Seeks past a flagged span the playhead has entered. */
+    /** Seeks past a flagged span the playhead is about to enter. */
     private fun applySkips(exo: ExoPlayer) {
         if (spans.isEmpty() || !exo.isPlaying) return
         val position = exo.currentPosition
-        val span = spans.spanAt(position) ?: return
+        // Decided against the playhead a moment in the future, not where it is now.
+        // Seeking flushes ExoPlayer's own buffers, but audio already handed to the output
+        // — and, over Bluetooth, already sitting in the headset — cannot be recalled, so
+        // a skip decided the instant the span is entered is heard anyway. This was the
+        // difference between cutting a word and cutting the tail of one.
+        val span = spans.spanAt(position + SKIP_LOOKAHEAD_MS) ?: return
 
         skippedMs += span.endMs - position
         exo.seekTo(span.endMs)
+        android.util.Log.i(
+            "FilterPod",
+            "skip ${span.startMs}-${span.endMs}ms (${span.severity}) " +
+                "decided at ${position}ms, ${span.startMs - position}ms early",
+        )
         listener?.onSkip(span)
     }
 
@@ -189,6 +214,9 @@ class PlaybackService : MediaSessionService() {
 
     /** Also main-thread: the ticker reads this list, so writing it elsewhere races. */
     fun setSpans(next: List<FilterSpan>) = onMain {
+        // Logged because "the UI counted cuts but nothing was skipped" is otherwise
+        // indistinguishable from "the spans never arrived", and they have different fixes.
+        android.util.Log.i("FilterPod", "setSpans: ${next.size} span(s)")
         spans = next
     }
 
@@ -210,6 +238,72 @@ class PlaybackService : MediaSessionService() {
 
     fun setRate(rate: Float) = onMain {
         player?.setPlaybackSpeed(rate)
+    }
+
+    /** Seeks by [deltaMs], clamped to the episode, and resolves any span it lands in. */
+    private fun seekRelative(deltaMs: Long) = onMain {
+        val exo = player ?: return@onMain
+        val duration = exo.duration
+        var target = exo.currentPosition + deltaMs
+        if (target < 0) target = 0
+        if (duration > 0 && target > duration) target = duration
+        seekTo(target)
+    }
+
+    /**
+     * Applies new skip increments, taking effect on the next button press.
+     *
+     * The buttons are rebuilt too, because the icons carry the number — Media3 ships
+     * distinct "back 15" and "back 30" glyphs, and a button that says 15 while seeking 30
+     * is worse than no number at all.
+     */
+    fun setSkipIncrements(backMs: Long, forwardMs: Long) = onMain {
+        if (backMs == skipBackMs && forwardMs == skipForwardMs) return@onMain
+        skipBackMs = backMs
+        skipForwardMs = forwardMs
+        session?.setMediaButtonPreferences(skipButtons())
+    }
+
+    /**
+     * The two buttons that replace Media3's defaults in the notification.
+     *
+     * `DefaultMediaNotificationProvider` fills the slots either side of play/pause from
+     * the media button preferences, falling back to previous/next track only when nothing
+     * claims [CommandButton.SLOT_BACK] and [CommandButton.SLOT_FORWARD]. Previous/next is
+     * the wrong idiom for a podcast — there is no queue, and a single ±30s jump is what
+     * the content is actually navigated by.
+     *
+     * Binding them to player commands rather than session commands means Media3 dispatches
+     * them itself, so they also work from Bluetooth controls, Android Auto and Wear
+     * without any of this class being involved.
+     */
+    private fun skipButtons(): ImmutableList<CommandButton> = ImmutableList.of(
+        CommandButton.Builder(backIcon(skipBackMs))
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+            .setSlots(CommandButton.SLOT_BACK)
+            .setDisplayName("Skip back ${skipBackMs / 1000} seconds")
+            .build(),
+        CommandButton.Builder(forwardIcon(skipForwardMs))
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+            .setSlots(CommandButton.SLOT_FORWARD)
+            .setDisplayName("Skip forward ${skipForwardMs / 1000} seconds")
+            .build(),
+    )
+
+    /**
+     * Presents the configured increments to everything outside this service.
+     *
+     * ExoPlayer takes its seek increments as builder arguments and offers no setter, but
+     * the increments here are a user setting. Forwarding lets them change at any time,
+     * and routing the seeks through [seekRelative] means a skip from the notification is
+     * filtered exactly like one from the in-app buttons — otherwise skipping forward could
+     * drop the playhead into the middle of a flagged word and play it.
+     */
+    private inner class SkipPlayer(inner: Player) : ForwardingPlayer(inner) {
+        override fun getSeekBackIncrement(): Long = skipBackMs
+        override fun getSeekForwardIncrement(): Long = skipForwardMs
+        override fun seekBack() { seekRelative(-skipBackMs) }
+        override fun seekForward() { seekRelative(skipForwardMs) }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -235,6 +329,18 @@ class PlaybackService : MediaSessionService() {
     companion object {
         const val TICK_MS = 20L
 
+        /**
+         * How far in front of the playhead a skip is decided.
+         *
+         * Covers the audio that is already past the point of recall when `seekTo` runs:
+         * the platform mixer and HAL buffers, and over A2DP the headset's own buffer,
+         * which together run to a couple of hundred milliseconds. Too small and the start
+         * of a flagged word is audible before the cut lands — the bug this fixes. Too
+         * large and the cut eats into the word before it, so this deliberately errs only
+         * slightly past typical wired latency.
+         */
+        private const val SKIP_LOOKAHEAD_MS = 250L
+
         /** Status updates to the WebView. The UI shows whole seconds. */
         private const val STATUS_INTERVAL_MS = 200L
 
@@ -252,6 +358,34 @@ class PlaybackService : MediaSessionService() {
 
         @Volatile
         var pendingPlay: Boolean = false
+
+        /*
+         * Increments to build the session with, for when they are set before the service
+         * exists — which is the normal case, since the web layer pushes them from its
+         * startup sequence. Defaults match DEFAULT_SETTINGS in src/data/defaults.ts.
+         */
+        @Volatile
+        var pendingSkipBackMs: Long = 15_000
+
+        @Volatile
+        var pendingSkipForwardMs: Long = 30_000
+
+        /** Media3 ships numbered glyphs for the common increments; the rest get a plain arrow. */
+        private fun backIcon(ms: Long) = when (ms) {
+            5_000L -> CommandButton.ICON_SKIP_BACK_5
+            10_000L -> CommandButton.ICON_SKIP_BACK_10
+            15_000L -> CommandButton.ICON_SKIP_BACK_15
+            30_000L -> CommandButton.ICON_SKIP_BACK_30
+            else -> CommandButton.ICON_SKIP_BACK
+        }
+
+        private fun forwardIcon(ms: Long) = when (ms) {
+            5_000L -> CommandButton.ICON_SKIP_FORWARD_5
+            10_000L -> CommandButton.ICON_SKIP_FORWARD_10
+            15_000L -> CommandButton.ICON_SKIP_FORWARD_15
+            30_000L -> CommandButton.ICON_SKIP_FORWARD_30
+            else -> CommandButton.ICON_SKIP_FORWARD
+        }
 
 
         /**

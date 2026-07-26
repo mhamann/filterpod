@@ -181,6 +181,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       catchingUp: false,
     })
 
+    /*
+     * The player is loaded before analysis begins, not after.
+     *
+     * Loading is what starts the playback service, and `setFilterSpans` is rejected
+     * outright while that service does not exist. In the old order every span found
+     * during the lead-in was therefore thrown away, and the opening stretch of the
+     * episode played completely unfiltered — the UI would report the cuts it had found
+     * while the audio sailed straight through them. Spans only started landing once a
+     * later background chunk happened to call `onUpdate`.
+     *
+     * Doing it first also means the audio buffers while the lead-in is transcribed
+     * rather than afterwards, which is most of what makes playback start promptly.
+     */
+    await platform.player.load(
+      {
+        episodeId,
+        url,
+        fileKey,
+        title: episode.title,
+        artist: podcast?.title ?? '',
+        artworkUrl: episode.artworkUrl ?? podcast?.artworkUrl,
+        durationSec: episode.durationSec,
+      },
+      startAtSec,
+    )
+    await platform.player.setRate(settings.playbackRate)
+
     // Analyze a lead-in, then start; the rest is filtered while the audio plays.
     try {
       const { spans, ranges } = await startLiveFilter({
@@ -217,20 +244,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         error: error instanceof Error ? error.message : String(error),
       })
     }
-
-    await platform.player.load(
-      {
-        episodeId,
-        url,
-        fileKey,
-        title: episode.title,
-        artist: podcast?.title ?? '',
-        artworkUrl: episode.artworkUrl ?? podcast?.artworkUrl,
-        durationSec: episode.durationSec,
-      },
-      progress?.positionSec ?? 0,
-    )
-    await platform.player.setRate(settings.playbackRate)
 
     unsubscribeStatus = platform.player.onStatus((status) => {
       set({

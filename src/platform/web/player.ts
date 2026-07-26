@@ -30,6 +30,8 @@ export function createWebPlayer(): PlayerPlatform {
   let skippedSec = 0
   let state: PlayerStatus['state'] = 'idle'
   let lastError: string | undefined
+  let skipBackSec = 15
+  let skipForwardSec = 30
 
   function status(): PlayerStatus {
     return {
@@ -61,6 +63,40 @@ export function createWebPlayer(): PlayerPlatform {
     emit()
     rafHandle = requestAnimationFrame(applySkips)
   }
+
+  /** Seeks, then resolves any span the new position lands inside. */
+  function seekTo(positionSec: number) {
+    audio.currentTime = Math.max(0, positionSec)
+    // A scrub can land inside a flagged span; resolve it immediately rather than
+    // waiting for the next frame.
+    const span = spanAt(spans, audio.currentTime)
+    if (span) audio.currentTime = span.endSec
+    emit()
+  }
+
+  /*
+   * Skip handlers for the OS media controls.
+   *
+   * Registered once rather than per track: the handlers read the current increments and
+   * position when invoked, so re-registering on every load would only churn. Wrapped
+   * because browsers throw NotSupportedError for actions they do not implement, and a
+   * missing skip button is not worth failing playback over.
+   */
+  function installMediaSessionHandlers() {
+    if (!('mediaSession' in navigator)) return
+    try {
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        seekTo(audio.currentTime - (details.seekOffset ?? skipBackSec))
+      })
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        seekTo(audio.currentTime + (details.seekOffset ?? skipForwardSec))
+      })
+    } catch {
+      // Unsupported in this browser; the in-app controls still work.
+    }
+  }
+
+  installMediaSessionHandlers()
 
   function startLoop() {
     if (!rafHandle) rafHandle = requestAnimationFrame(applySkips)
@@ -139,16 +175,16 @@ export function createWebPlayer(): PlayerPlatform {
     },
 
     async seek(positionSec: number) {
-      audio.currentTime = positionSec
-      // A scrub can land inside a flagged span; resolve it immediately rather than
-      // waiting for the next frame.
-      const span = spanAt(spans, audio.currentTime)
-      if (span) audio.currentTime = span.endSec
-      emit()
+      seekTo(positionSec)
     },
 
     async setRate(rate: number) {
       audio.playbackRate = rate
+    },
+
+    async setSkipIncrements(backSec: number, forwardSec: number) {
+      skipBackSec = backSec
+      skipForwardSec = forwardSec
     },
 
     async setFilterSpans(next: FilterSpan[]) {

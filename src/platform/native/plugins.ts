@@ -21,6 +21,8 @@ export interface FilterPlayerPlugin {
   pause(): Promise<void>
   seek(options: { positionSec: number }): Promise<void>
   setRate(options: { rate: number }): Promise<void>
+  /** Increments for the notification and lock-screen skip buttons. */
+  setSkipIncrements(options: { backSec: number; forwardSec: number }): Promise<void>
   /** Spans are evaluated on a native handler, so skipping survives the screen going off. */
   setFilterSpans(options: { spans: FilterSpan[] }): Promise<void>
   release(): Promise<void>
