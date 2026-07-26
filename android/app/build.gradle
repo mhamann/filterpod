@@ -1,0 +1,107 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace = "app.filterpod"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "app.filterpod"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            // 64-bit ARM covers essentially every device that can run this usefully;
+            // armeabi-v7a is kept for older hardware. x86 emulator images are dropped
+            // because building whisper.cpp four times over is not worth the wait.
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+
+        externalNativeBuild {
+            cmake {
+                /*
+                 * Always optimize the native build, even in a debug APK.
+                 *
+                 * Gradle otherwise passes CMAKE_BUILD_TYPE=Debug for `assembleDebug`,
+                 * which compiles ggml's inner loops at -O0. Measured on a Pixel 7 Pro
+                 * that made transcription roughly 1x realtime — too slow to stay ahead
+                 * of playback — against 12-14x for an optimized build. The Kotlin side
+                 * stays debuggable; only the math is optimized.
+                 */
+                arguments '-DCMAKE_BUILD_TYPE=Release'
+                cppFlags '-O3'
+            }
+        }
+
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+
+    // whisper.cpp is built from source via the NDK. `vendorWhisper` fetches it.
+    externalNativeBuild {
+        cmake {
+            path = file('src/main/cpp/CMakeLists.txt')
+        }
+    }
+
+    packagingOptions {
+        // The ONNX Runtime WASM shipped for the browser transcriber is dead weight in
+        // the APK: on device, transcription goes through whisper.cpp instead.
+        resources.excludes += ['assets/public/assets/*.wasm']
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+
+    // Playback lives in a Media3 foreground service so skipping keeps working with
+    // the screen off, which a WebView-driven player cannot do.
+    implementation "androidx.media3:media3-exoplayer:$media3Version"
+    implementation "androidx.media3:media3-session:$media3Version"
+    implementation "androidx.media3:media3-common:$media3Version"
+
+    // Downloads survive backgrounding as WorkManager jobs.
+    implementation "androidx.work:work-runtime-ktx:$workManagerVersion"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion"
+
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

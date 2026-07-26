@@ -1,0 +1,250 @@
+import { useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
+import Dexie from 'dexie'
+import { db } from '@/data/db'
+import { Artwork, Button, Pill } from '@/ui/components'
+import { EpisodeRow } from '@/ui/EpisodeRow'
+import { Icon } from '@/ui/Icon'
+import { subscribeToFeed, unsubscribeFromFeed } from '@/features/subscriptions/service'
+import { fetchFeed } from '@/features/feeds/refresh'
+
+const PAGE_SIZE = 30
+
+export function PodcastDetail() {
+  const { podcastId = '' } = useParams()
+  const navigate = useNavigate()
+  const [limit, setLimit] = useState(PAGE_SIZE)
+  const [busy, setBusy] = useState(false)
+
+  const podcast = useLiveQuery(() => db.podcasts.get(podcastId), [podcastId])
+  const subscription = useLiveQuery(() => db.subscriptions.get(podcastId), [podcastId])
+  const episodes = useLiveQuery(
+    () =>
+      db.episodes
+        .where('[podcastId+publishedAt]')
+        .between([podcastId, Dexie.minKey], [podcastId, Dexie.maxKey])
+        .reverse()
+        .limit(limit)
+        .toArray(),
+    [podcastId, limit],
+    [],
+  )
+  const totalEpisodes = useLiveQuery(
+    () => db.episodes.where('podcastId').equals(podcastId).count(),
+    [podcastId],
+    0,
+  )
+
+  if (!podcast) {
+    return (
+      <div className="p-8 text-center text-ink-600">
+        <p>This show is not in your library.</p>
+        <Link to="/discover" className="mt-3 inline-block text-ember-400">
+          Search for it
+        </Link>
+      </div>
+    )
+  }
+
+  const isSubscribed = Boolean(subscription)
+
+  return (
+    <div className="animate-rise pb-6">
+      <div className="rack-texture flex items-center gap-1 border-b border-panel-800 px-2 py-2">
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+          className="focus-ring rotate-180 rounded-full p-2 text-ink-300"
+        >
+          <Icon name="chevronRight" size={20} />
+        </button>
+        <span className="silkscreen truncate">{podcast.author}</span>
+      </div>
+
+      <header className="px-4 pt-5 pb-4">
+        <div className="flex gap-4">
+          <Artwork
+            src={podcast.artworkUrl}
+            alt={podcast.title}
+            className="h-[104px] w-[104px] shadow-xl shadow-black/50"
+          />
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl leading-tight">{podcast.title}</h1>
+            <p className="mt-1 truncate text-[13px] text-ink-500">{podcast.author}</p>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <Pill tone="neutral">{totalEpisodes} episodes</Pill>
+              {podcast.explicit && <Pill tone="ember">Explicit feed</Pill>}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          {isSubscribed ? (
+            <Button
+              variant="secondary"
+              icon="check"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true)
+                try {
+                  await unsubscribeFromFeed(podcastId)
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              Subscribed
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              icon="plus"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true)
+                try {
+                  await subscribeToFeed(podcast.feedUrl)
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              Subscribe
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            icon="refresh"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              try {
+                await fetchFeed(podcast.feedUrl)
+              } finally {
+                setBusy(false)
+              }
+            }}
+          >
+            Refresh
+          </Button>
+        </div>
+
+        {podcast.lastFetchError && (
+          <p className="mt-3 rounded-lg bg-alarm-500/10 px-3 py-2 text-[12px] text-alarm-400 ring-1 ring-alarm-500/25">
+            Last refresh failed: {podcast.lastFetchError}
+          </p>
+        )}
+
+        <Description text={podcast.description} />
+      </header>
+
+      {isSubscribed && (
+        <AutoDownloadControl
+          podcastId={podcastId}
+          enabled={subscription!.autoDownload}
+          limit={subscription!.autoDownloadLimit}
+        />
+      )}
+
+      <div className="border-t border-panel-800">
+        {episodes.map((episode) => (
+          <EpisodeRow key={episode.id} episode={episode} />
+        ))}
+      </div>
+
+      {episodes.length < totalEpisodes && (
+        <div className="px-4 pt-4">
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => setLimit((current) => current + PAGE_SIZE)}
+          >
+            Show more
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Long show descriptions get a clamp with an expander. */
+function Description({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!text) return null
+  const isLong = text.length > 180
+  return (
+    <div className="mt-4">
+      <p
+        className={`text-[13px] leading-relaxed text-ink-500 ${
+          expanded || !isLong ? '' : 'line-clamp-3'
+        }`}
+      >
+        {text}
+      </p>
+      {isLong && (
+        <button
+          onClick={() => setExpanded((open) => !open)}
+          className="focus-ring mt-1 text-[12px] text-ember-400"
+        >
+          {expanded ? 'Less' : 'More'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function AutoDownloadControl({
+  podcastId,
+  enabled,
+  limit,
+}: {
+  podcastId: string
+  enabled: boolean
+  limit: number
+}) {
+  return (
+    <div className="mx-4 mb-4 flex items-center justify-between rounded-xl bg-panel-850 px-4 py-3 ring-1 ring-panel-700">
+      <div>
+        <p className="text-[13px] font-medium">Auto-download new episodes</p>
+        <p className="text-[11px] text-ink-600">
+          {enabled ? `Keeps the latest ${limit} filtered and ready` : 'Off'}
+        </p>
+      </div>
+      <Toggle
+        checked={enabled}
+        onChange={(next) => void db.subscriptions.update(podcastId, { autoDownload: next })}
+      />
+    </div>
+  )
+}
+
+export function Toggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange(next: boolean): void
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`focus-ring relative h-[26px] w-[46px] shrink-0 rounded-full p-0 transition-colors ${
+        checked ? 'bg-ember-500' : 'bg-panel-700'
+      }`}
+    >
+      {/*
+        `left-0` is load-bearing. Without an inset the knob falls back to its static
+        position, and a <button> centres inline content by default — so the knob starts
+        mid-track and the transform pushes it out past the right edge.
+      */}
+      <span
+        className={`absolute top-[3px] left-0 h-5 w-5 rounded-full bg-ink-100 shadow-sm transition-transform duration-200 ${
+          checked ? 'translate-x-[23px]' : 'translate-x-[3px]'
+        }`}
+      />
+    </button>
+  )
+}
