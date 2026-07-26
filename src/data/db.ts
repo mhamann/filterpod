@@ -6,6 +6,7 @@ import type {
   FilterProfile,
   Podcast,
   Progress,
+  QueueItem,
   Settings,
   Subscription,
 } from '@/core/types'
@@ -34,6 +35,7 @@ class FilterPodDatabase extends Dexie {
   filterProfiles!: EntityTable<FilterProfile, 'id'>
   wordOverrides!: EntityTable<WordOverride, 'term'>
   settings!: EntityTable<SettingsRow, 'id'>
+  queue!: EntityTable<QueueItem, 'episodeId'>
 
   constructor() {
     super('filterpod')
@@ -55,6 +57,12 @@ class FilterPodDatabase extends Dexie {
     // index — without this, `orderBy('startedAt')` throws rather than sorting.
     this.version(2).stores({
       downloads: 'episodeId, state, startedAt',
+    })
+
+    // v3: the play queue. Keyed by episode so the same episode cannot be queued twice,
+    // and indexed by position because that is the order it is always read in.
+    this.version(3).stores({
+      queue: 'episodeId, position',
     })
   }
 }

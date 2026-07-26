@@ -11,6 +11,8 @@ import {
   getProfileForPodcast,
   getProgress,
   getSettings,
+  dequeueNext,
+  removeFromQueue,
   listWordOverrides,
   saveProgress,
 } from '@/data/repo'
@@ -70,7 +72,6 @@ interface PlayerState {
   /** Set when playback paused because it caught up with the analysis frontier. */
   catchingUp: boolean
   blockedReason?: string
-  queue: string[]
   /**
    * Whether the episode on screen is actually loaded into the player.
    *
@@ -93,8 +94,6 @@ interface PlayerState {
   setRate(rate: number): Promise<void>
   /** Re-reads the filter map, e.g. after a prefilter pass finishes for this episode. */
   refreshSpans(): Promise<void>
-  enqueue(episodeId: string): void
-  clearQueue(): void
   close(): Promise<void>
 }
 
@@ -116,7 +115,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   preparing: false,
   modelProgress: null,
   catchingUp: false,
-  queue: [],
 
   async open(episodeId, autoPlay = true) {
     const platform = getPlatform()
@@ -163,6 +161,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // Record and disk disagree. Stream now, and fetch it again in the background.
       await enqueueDownload(episodeId)
     }
+
+    // Playing something takes it out of "up next", however it was reached — from the
+    // queue itself, from a list, or by the queue advancing. Otherwise the episode now
+    // playing sits in the queue waiting to be played again.
+    void removeFromQueue(episodeId)
 
     const startAtSec = progress?.positionSec ?? 0
     const url = audioPresent
@@ -455,14 +458,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ spans: map.spans, analyzedRanges: mergeRanges(map.analyzedRanges) })
   },
 
-  enqueue(episodeId) {
-    set({ queue: [...get().queue, episodeId] })
-  },
-
-  clearQueue() {
-    set({ queue: [] })
-  },
-
   /** Tears down playback and stops filtering, so nothing keeps working in the background. */
   async close() {
     stopLiveFilter()
@@ -484,12 +479,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 }))
 
-/** Advances to the next queued episode when one finishes. */
+/**
+ * Advances to the next queued episode when one finishes.
+ *
+ * The queue lives in storage rather than in this store, so it survives a restart the
+ * same way the restored episode does — a queue that evaporated when the app was closed
+ * would not be worth arranging. Taking the next item and removing it happen in one
+ * transaction, so an episode cannot be played twice or skipped entirely.
+ */
 async function advanceQueue() {
-  const { queue } = usePlayerStore.getState()
-  if (queue.length === 0) return
-  const [next, ...rest] = queue
-  usePlayerStore.setState({ queue: rest })
+  const next = await dequeueNext()
+  if (!next) return
   await usePlayerStore.getState().open(next, true)
 }
 

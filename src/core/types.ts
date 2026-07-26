@@ -186,6 +186,21 @@ export interface FilterProfile {
   mergeGapSec: number
 }
 
+/** One episode's place in the play queue. */
+export interface QueueItem {
+  episodeId: EpisodeId
+  /**
+   * Sort key, dense and zero-based.
+   *
+   * Rewritten across the whole queue on every reorder rather than kept sparse. A queue is
+   * a handful of episodes someone arranged by hand, so renumbering costs nothing, and it
+   * keeps positions from drifting into the fractional soup that gap-based schemes decay
+   * into after enough moves.
+   */
+  position: number
+  addedAt: number
+}
+
 export interface Settings {
   activeFilterProfileId: string
   playbackRate: number

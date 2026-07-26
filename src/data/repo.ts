@@ -9,6 +9,7 @@ import type {
   Podcast,
   PodcastId,
   Progress,
+  QueueItem,
   Settings,
   Subscription,
 } from '@/core/types'
@@ -255,4 +256,87 @@ export async function putWordOverride(override: WordOverride): Promise<void> {
 
 export async function deleteWordOverride(term: string): Promise<void> {
   await db.wordOverrides.delete(term)
+}
+
+// --- play queue -------------------------------------------------------------
+
+/**
+ * The queue, in play order.
+ *
+ * Position is dense and rewritten wholesale by the mutations below, so reading is a
+ * plain ordered scan and callers never have to reason about gaps.
+ */
+export function listQueue(): Promise<QueueItem[]> {
+  return db.queue.orderBy('position').toArray()
+}
+
+/**
+ * Adds an episode to the queue.
+ *
+ * Keyed by episode, so queueing something already queued moves it rather than
+ * duplicating it — a queue with the same episode twice is never what was meant, and
+ * playing it would strand the second copy at a position already listened to.
+ */
+export async function enqueueEpisode(
+  episodeId: EpisodeId,
+  options: { next?: boolean } = {},
+): Promise<void> {
+  await db.transaction('rw', db.queue, async () => {
+    const items = (await db.queue.orderBy('position').toArray()).filter(
+      (item) => item.episodeId !== episodeId,
+    )
+    const entry: QueueItem = { episodeId, position: 0, addedAt: Date.now() }
+    const ordered = options.next ? [entry, ...items] : [...items, entry]
+    await renumber(ordered)
+  })
+}
+
+export async function removeFromQueue(episodeId: EpisodeId): Promise<void> {
+  await db.transaction('rw', db.queue, async () => {
+    await db.queue.delete(episodeId)
+    await renumber(await db.queue.orderBy('position').toArray())
+  })
+}
+
+/**
+ * Moves a queued episode by [delta] places, clamped to the ends.
+ *
+ * Expressed as a relative move rather than an absolute index because that is what the
+ * controls do, and it means the caller never has to know the current position — which it
+ * would otherwise have to read first, racing anything else editing the queue.
+ */
+export async function moveInQueue(episodeId: EpisodeId, delta: number): Promise<void> {
+  await db.transaction('rw', db.queue, async () => {
+    const items = await db.queue.orderBy('position').toArray()
+    const from = items.findIndex((item) => item.episodeId === episodeId)
+    if (from < 0) return
+
+    const to = Math.min(items.length - 1, Math.max(0, from + delta))
+    if (to === from) return
+
+    const [moved] = items.splice(from, 1)
+    items.splice(to, 0, moved)
+    await renumber(items)
+  })
+}
+
+/** Takes the next episode off the queue, or undefined when it is empty. */
+export async function dequeueNext(): Promise<EpisodeId | undefined> {
+  return db.transaction('rw', db.queue, async () => {
+    const items = await db.queue.orderBy('position').toArray()
+    const next = items.shift()
+    if (!next) return undefined
+    await db.queue.delete(next.episodeId)
+    await renumber(items)
+    return next.episodeId
+  })
+}
+
+export async function clearQueue(): Promise<void> {
+  await db.queue.clear()
+}
+
+/** Writes back dense positions matching array order. */
+async function renumber(items: QueueItem[]): Promise<void> {
+  await db.queue.bulkPut(items.map((item, index) => ({ ...item, position: index })))
 }

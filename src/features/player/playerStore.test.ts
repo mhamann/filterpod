@@ -24,6 +24,9 @@ const calls: string[] = []
  */
 let serviceRunning = false
 
+/** The store's status listener, so tests can deliver player events like 'ended'. */
+let statusCallback: ((status: unknown) => void) | null = null
+
 const player = {
   load: vi.fn(async () => {
     serviceRunning = true
@@ -42,7 +45,10 @@ const player = {
     if (!serviceRunning) throw new Error('playback service is not running')
     calls.push(`setFilterSpans:${spans.length}`)
   }),
-  onStatus: vi.fn(() => () => {}),
+  onStatus: vi.fn((cb: (s: unknown) => void) => {
+    statusCallback = cb
+    return () => {}
+  }),
   onSkip: vi.fn(() => () => {}),
   release: vi.fn(async () => {}),
 }
@@ -71,7 +77,9 @@ const episode = {
 }
 
 vi.mock('@/data/repo', () => ({
-  getEpisode: async () => episode,
+  // Honours the id asked for, so advancing to a *different* episode exercises the real
+  // open path rather than open()'s already-current short-circuit.
+  getEpisode: async (id: string) => ({ ...episode, id }),
   getPodcast: async () => ({ id: 'p1', title: 'Pod' }),
   getDownload: async () => ({ episodeId: 'e1', fileKey: 'audio/e1', state: 'downloaded' }),
   getProgress: async () => undefined,
@@ -80,7 +88,12 @@ vi.mock('@/data/repo', () => ({
   listWordOverrides: async () => [],
   getSettings: async () => ({ playbackRate: 1, whisperModel: 'base.en', completionThresholdSec: 60 }),
   saveProgress: async () => {},
+  removeFromQueue: async () => {},
+  dequeueNext: async () => dequeueNextResult,
 }))
+
+/** What the queue hands back when the current episode ends. */
+let dequeueNextResult: string | undefined
 
 /** Progress rows the restore path scans, newest first. */
 const progressRows: Array<{
@@ -235,5 +248,51 @@ describe('restoring the last episode', () => {
     expect(calls).toContain('load')
     expect(calls).toContain('play')
     expect(usePlayerStore.getState().loaded).toBe(true)
+  })
+})
+
+describe('the queue', () => {
+  beforeEach(() => {
+    calls.length = 0
+    serviceRunning = false
+    progressRows.length = 0
+    dequeueNextResult = undefined
+    vi.clearAllMocks()
+    usePlayerStore.setState({ episode: null, state: 'idle', loaded: false })
+  })
+
+  it('plays the next queued episode when one ends', async () => {
+    await usePlayerStore.getState().open('e1', false)
+    dequeueNextResult = 'e2'
+    calls.length = 0
+
+    statusCallback?.({
+      state: 'ended',
+      positionSec: 3600,
+      durationSec: 3600,
+      skippedSec: 0,
+      buffered: 3600,
+    })
+    // advanceQueue is fired without being awaited by the listener.
+    await vi.waitFor(() => expect(calls).toContain('play'))
+
+    expect(calls.indexOf('load')).toBeLessThan(calls.indexOf('play'))
+  })
+
+  it('stops at the end when nothing is queued', async () => {
+    await usePlayerStore.getState().open('e1', false)
+    dequeueNextResult = undefined
+    calls.length = 0
+
+    statusCallback?.({
+      state: 'ended',
+      positionSec: 3600,
+      durationSec: 3600,
+      skippedSec: 0,
+      buffered: 3600,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(calls).toEqual([])
   })
 })

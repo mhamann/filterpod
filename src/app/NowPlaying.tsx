@@ -9,6 +9,7 @@ import { CutTimeline } from '@/ui/CutTimeline'
 import { Artwork, Pill } from '@/ui/components'
 import { Icon } from '@/ui/Icon'
 import { SkipIcon } from '@/ui/SkipIcon'
+import { UpNext } from '@/ui/UpNext'
 import { timecode } from '@/ui/format'
 
 const RATES = [0.8, 1, 1.2, 1.5, 1.75, 2]
@@ -272,6 +273,8 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
             Playback failed. Try re-downloading this episode.
           </p>
         )}
+
+        <UpNext />
       </div>
     </div>
   )
