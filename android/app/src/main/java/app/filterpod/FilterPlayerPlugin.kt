@@ -68,6 +68,9 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
             call.reject("url or fileKey is required")
             return
         }
+        // Streaming: start filling the cache now, so the transcriber is reading from disk
+        // by the time it asks rather than fetching in MediaExtractor-sized pieces.
+        if (resolved == null) MediaCache.prefetch(context, url)
         val startAtMs = ((call.getDouble("startAtSec") ?: 0.0) * 1000).toLong()
 
         val request = PlaybackService.Companion.LoadRequest(

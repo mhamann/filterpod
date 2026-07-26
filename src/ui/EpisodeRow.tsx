@@ -31,15 +31,14 @@ export function EpisodeRow({ episode }: { episode: Episode }) {
     progress && progress.durationSec > 0 ? progress.positionSec / progress.durationSec : 0
 
   /**
-   * Once downloaded, the action is simply Play. Filtering starts on its own from the
-   * point you press play, so there is no separate "filter this first" step to perform.
+   * Play is always the primary action; downloading is a separate, optional one.
+   *
+   * Episodes stream, so being on disk is no longer a precondition for playing one — it
+   * only decides whether it will still be there without a connection. Filtering starts on
+   * its own from wherever you press play, so there is no "prepare this first" step of any
+   * kind between wanting to listen and listening.
    */
-  const primaryAction = () => {
-    if (isDownloaded) return void open(episode.id)
-    return void enqueueDownload(episode.id)
-  }
-
-  const actionLabel = isDownloaded ? 'Play' : isDownloading ? 'Downloading' : 'Get'
+  const primaryAction = () => void open(episode.id)
 
   return (
     <article
@@ -89,15 +88,22 @@ export function EpisodeRow({ episode }: { episode: Episode }) {
       )}
 
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant={isDownloaded ? 'primary' : 'secondary'}
-          icon={isDownloaded ? 'play' : 'download'}
-          onClick={primaryAction}
-          disabled={isDownloading}
-        >
-          {actionLabel}
+        <Button size="sm" variant="primary" icon="play" onClick={primaryAction}>
+          Play
         </Button>
+
+        {/* Keeping an episode offline is now a deliberate extra, not a prerequisite. */}
+        {!isDownloaded && (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="download"
+            onClick={() => void enqueueDownload(episode.id)}
+            disabled={isDownloading}
+          >
+            {isDownloading ? 'Downloading' : 'Get'}
+          </Button>
+        )}
 
         <FilterStatus map={filterMap} download={download} compact />
 

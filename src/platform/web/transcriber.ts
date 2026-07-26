@@ -1,6 +1,7 @@
 import type { TimedWord } from '@/core/types'
 import type { FilesPlatform, TranscribeRequest, TranscriberPlatform } from '../types'
 import { decodeToMono16k, sliceWindow } from './audioDecode'
+import { resolveFetchUrl } from './http'
 
 /**
  * Browser transcription, driving the Whisper worker.
@@ -44,13 +45,26 @@ export function createWebTranscriber(files: FilesPlatform): TranscriberPlatform 
   let cache: { fileKey: string; pcm: Float32Array } | null = null
   let inflight: { fileKey: string; promise: Promise<Float32Array> } | null = null
 
-  async function decodedPcm(fileKey: string): Promise<Float32Array> {
+  /** Reads the downloaded file, falling back to fetching the enclosure when streaming. */
+  async function readLocalOrFetch(fileKey: string, url?: string): Promise<ArrayBuffer> {
+    if (await files.exists(fileKey)) return files.read(fileKey)
+    if (!url) throw new Error('no local audio and no stream url')
+    const response = await fetch(resolveFetchUrl(url))
+    if (!response.ok) throw new Error(`could not fetch audio: ${response.status}`)
+    return response.arrayBuffer()
+  }
+
+  async function decodedPcm(fileKey: string, url?: string): Promise<Float32Array> {
     if (cache?.fileKey === fileKey) return cache.pcm
     // Chunks can overlap in flight; they must share one decode, not race it.
     if (inflight?.fileKey === fileKey) return inflight.promise
 
     const promise = (async () => {
-      const data = await files.read(fileKey)
+      // Streamed episodes have nothing on disk. The browser has no equivalent of the
+      // native shared cache, so this fetches the episode itself — acceptable because
+      // this implementation exists to make the app developable in a browser, not to be
+      // efficient on a phone.
+      const data = await readLocalOrFetch(fileKey, url)
       const pcm = await decodeToMono16k(data)
       cache = { fileKey, pcm }
       return pcm
@@ -147,7 +161,7 @@ export function createWebTranscriber(files: FilesPlatform): TranscriberPlatform 
     },
 
     async transcribe(req: TranscribeRequest): Promise<TimedWord[]> {
-      const pcm = await decodedPcm(req.fileKey)
+      const pcm = await decodedPcm(req.fileKey, req.url)
       const durationSec = pcm.length / 16_000
 
       const windows =

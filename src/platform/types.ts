@@ -163,8 +163,16 @@ export interface PlayerPlatform {
 
 export interface TranscribeRequest {
   episodeId: string
-  /** Local file key of the downloaded audio. Transcription requires local audio. */
+  /** Local file key of the downloaded audio, used when the episode is on disk. */
   fileKey: string
+  /**
+   * Remote audio, for episodes being streamed rather than downloaded.
+   *
+   * Read through the same cache the player streams through, so an episode is fetched
+   * once no matter how many things need its bytes. A cache miss blocks and fetches, so
+   * transcription never fails merely because audio has not arrived yet.
+   */
+  url?: string
   model: string
   /**
    * When set, only these windows are transcribed rather than the whole episode.

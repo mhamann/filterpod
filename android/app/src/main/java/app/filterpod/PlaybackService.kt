@@ -102,10 +102,18 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        // Still the default source factory. Streaming through MediaCache is written and
-        // compiles, but changing how every episode is read is not something to leave
-        // running unverified — see the note at the top of MediaCache.kt.
-        val exo = ExoPlayer.Builder(this).build().also { player = it }
+        // Streamed audio is read through the shared cache, so the bytes ExoPlayer pulls
+        // off the network are the same ones the transcriber later decodes rather than a
+        // second copy of them. Downloaded episodes are routed straight to the file — see
+        // MediaCache.playbackFactory.
+        val exo = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    MediaCache.playbackFactory(this),
+                ),
+            )
+            .build()
+            .also { player = it }
 
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) = emitStatus(exo)

@@ -5,6 +5,7 @@ import android.media.MediaDataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -106,6 +107,55 @@ object MediaCache {
         }
 
         override fun close() = delegate.close()
+    }
+
+    @Volatile
+    private var prefetching: Pair<String, Thread>? = null
+
+    /**
+     * Pulls an episode into the cache in the background, at network speed.
+     *
+     * Without this the decoder is the thing fetching, and it fetches the way MediaExtractor
+     * reads: in small pieces, seeking about. Every miss re-opens the stream, and for a
+     * typical podcast URL that means walking a chain of analytics redirects again — the
+     * first fifteen-second chunk of a streamed episode took 11.4s to decode, against 0.9s
+     * for the same audio on disk. Fetching sequentially and ahead turns almost every one of
+     * those reads into a local one.
+     *
+     * Deliberately unbounded: it caches the whole episode rather than a window. The cache
+     * has its own size limit, sequential fetching is by far the cheapest way to ask for
+     * bytes, and a listener who pressed play will most likely want the rest of it.
+     */
+    fun prefetch(context: Context, url: String) {
+        val current = prefetching
+        if (current?.first == url && current.second.isAlive) return
+        current?.second?.interrupt()
+
+        val thread = Thread {
+            val started = System.currentTimeMillis()
+            runCatching {
+                CacheWriter(
+                    dataSourceFactory(context).createDataSource(),
+                    DataSpec.Builder().setUri(url).build(),
+                    null,
+                ) { requested, cached, _ ->
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                    if (requested > 0 && cached == requested) {
+                        android.util.Log.i(
+                            "FilterPod",
+                            "prefetch complete: ${cached / 1048576}MB in " +
+                                "${System.currentTimeMillis() - started}ms",
+                        )
+                    }
+                }.cache()
+            }.onFailure {
+                // Losing the prefetch only costs speed: reads still fetch on demand.
+                android.util.Log.i("FilterPod", "prefetch stopped: ${it.message}")
+            }
+        }
+        thread.isDaemon = true
+        prefetching = url to thread
+        thread.start()
     }
 
     /**
