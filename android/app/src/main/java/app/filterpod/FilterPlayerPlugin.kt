@@ -22,16 +22,15 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
     /**
      * Runs [block] against the playback service, starting it only if needed.
      *
-     * Starting is deliberately not attempted for every command. `startForegroundService`
-     * commits Android to killing the app unless a notification follows within seconds,
-     * so firing it on `play()` before anything was loaded crashed the process outright.
-     * The service is started by `load()`, which is the point at which there is actually
-     * something to play.
+     * Only load() may start it. startService rather than startForegroundService: the
+     * latter commits Android to killing the app unless a notification follows within
+     * five seconds, and firing it from play() before anything was loaded did exactly
+     * that. Media3 promotes the service to foreground itself once playback begins.
      */
     private fun withService(call: PluginCall, start: Boolean, block: (PlaybackService) -> Unit) {
         var running = service()
         if (running == null && start) {
-            context.startForegroundService(Intent(context, PlaybackService::class.java))
+            context.startService(Intent(context, PlaybackService::class.java))
             running = service()
         }
         if (running == null) {
@@ -87,7 +86,7 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
             // Park it: the service applies this in onCreate. Waiting here instead would
             // block the bridge thread on an asynchronous service start.
             PlaybackService.pendingLoad = request
-            context.startForegroundService(Intent(context, PlaybackService::class.java))
+            context.startService(Intent(context, PlaybackService::class.java))
         }
         call.resolve()
     }
