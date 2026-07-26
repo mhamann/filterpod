@@ -174,8 +174,11 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
               Getting speech model… {Math.round(modelProgress * 100)}%
             </Pill>
           ) : preparing ? (
+            // Deliberately vague about how much: the lead-in is a latency budget that
+            // has already been retuned once, and copy naming a duration goes stale
+            // silently — this said "the first minute" when it had become fifteen seconds.
             <Pill tone="ember" pulse icon="shield">
-              Checking the first minute…
+              Checking ahead…
             </Pill>
           ) : spans.length === 0 ? (
             <Pill tone="sage" icon="check">
@@ -188,12 +191,6 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
               </Pill>
               <Pill tone="neutral">−{timecode(totalCutSec)} total</Pill>
             </>
-          )}
-          {/* Filtering runs alongside playback, so say how far ahead it has reached. */}
-          {!preparing && !fullyAnalyzed && analyzedRanges.length > 0 && (
-            <Pill tone="neutral" icon="shield">
-              checked to {timecode(frontier)}
-            </Pill>
           )}
         </div>
 
