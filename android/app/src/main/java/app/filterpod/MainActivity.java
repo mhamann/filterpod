@@ -16,6 +16,25 @@ public class MainActivity extends BridgeActivity {
         evictServiceWorker();
 
         super.onCreate(savedInstanceState);
+
+        requestNotificationPermission();
+    }
+
+    /**
+     * Asks for POST_NOTIFICATIONS on Android 13+.
+     *
+     * Declaring it in the manifest is not enough — it is a runtime permission, and
+     * without it the app is set to importance=NONE, which silently suppresses the media
+     * notification. Playback still works, but there are no lock-screen or notification
+     * transport controls at all, which for a podcast player is most of the interface.
+     */
+    private void requestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return;
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        requestPermissions(new String[] { android.Manifest.permission.POST_NOTIFICATIONS }, 1);
     }
 
     /**
