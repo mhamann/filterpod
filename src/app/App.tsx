@@ -85,7 +85,7 @@ export function App() {
         </nav>
       </div>
 
-      {playerOpen && <NowPlaying onClose={() => setPlayerOpen(false)} />}
+      <NowPlaying open={playerOpen} onClose={() => setPlayerOpen(false)} />
     </HashRouter>
   )
 }
