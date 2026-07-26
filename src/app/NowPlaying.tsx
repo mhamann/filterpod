@@ -174,11 +174,11 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
               Getting speech model… {Math.round(modelProgress * 100)}%
             </Pill>
           ) : preparing ? (
-            // Deliberately vague about how much: the lead-in is a latency budget that
-            // has already been retuned once, and copy naming a duration goes stale
-            // silently — this said "the first minute" when it had become fifteen seconds.
+            // No duration named on purpose: the lead-in is a latency budget that has
+            // already been retuned once, and copy stating one goes stale silently —
+            // this said "the first minute" when it had become fifteen seconds.
             <Pill tone="ember" pulse icon="shield">
-              Checking ahead…
+              Processing…
             </Pill>
           ) : spans.length === 0 ? (
             <Pill tone="sage" icon="check">
