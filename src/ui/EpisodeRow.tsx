@@ -6,6 +6,7 @@ import { duration, relativeDate, timecode } from './format'
 import { Button, FilterStatus, ProgressBar } from './components'
 import { Icon } from './Icon'
 import { enqueueDownload } from '@/features/downloads/downloadManager'
+import { enqueueEpisode, removeFromQueue } from '@/data/repo'
 import { usePlayerStore } from '@/features/player/playerStore'
 
 /**
@@ -19,6 +20,7 @@ export function EpisodeRow({ episode }: { episode: Episode }) {
   const download = useLiveQuery(() => db.downloads.get(episode.id), [episode.id])
   const filterMap = useLiveQuery(() => db.filterMaps.get(episode.id), [episode.id])
   const progress = useLiveQuery(() => db.progress.get(episode.id), [episode.id])
+  const queued = useLiveQuery(() => db.queue.get(episode.id), [episode.id])
 
   const open = usePlayerStore((state) => state.open)
   const playingId = usePlayerStore((state) => state.episode?.id)
@@ -91,6 +93,21 @@ export function EpisodeRow({ episode }: { episode: Episode }) {
         <Button size="sm" variant="primary" icon="play" onClick={primaryAction}>
           Play
         </Button>
+
+        {/*
+          Queueing toggles, and says so by filling in when queued. Tapping it a second
+          time expecting "add again" would otherwise be a silent no-op, since the queue
+          is keyed by episode and cannot hold the same one twice.
+        */}
+        <Button
+          size="sm"
+          variant={queued ? 'primary' : 'secondary'}
+          icon="queue"
+          className="!px-2.5"
+          onClick={() =>
+            void (queued ? removeFromQueue(episode.id) : enqueueEpisode(episode.id))
+          }
+        />
 
         {/* Keeping an episode offline is now a deliberate extra, not a prerequisite. */}
         {!isDownloaded && (

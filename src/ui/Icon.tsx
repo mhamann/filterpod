@@ -21,6 +21,8 @@ const PATHS = {
   chevronRight: 'M9 18.4 7.6 17l5-5-5-5L9 5.6l6.4 6.4z',
   scissors:
     'M9.6 3.4 14 10.9l1.6-2.7 3.9 6.7-1.7 1-2.9-5-.9 1.6 1.5 2.6a3 3 0 1 1-1.7 1l-1.3-2.3-1.3 2.3a3 3 0 1 1-1.7-1l1.5-2.6L4.5 3.4zM7.5 17a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
+  // A list with a plus: add this to the queue.
+  queue: 'M3 5h13v2H3zM3 10h13v2H3zM3 15h9v2H3zM18 13h2v3h3v2h-3v3h-2v-3h-3v-2h3z',
   plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
   trash: 'M9 3h6l1 2h4v2H4V5h4zM6 8h12l-1 13H7z',
   refresh:
