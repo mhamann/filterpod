@@ -47,14 +47,40 @@ object AudioDecoder {
     fun decodeWindow(file: File, startSec: Double?, endSec: Double?): FloatArray {
         val extractor = MediaExtractor()
         extractor.setDataSource(file.path)
+        return decodeWindow(extractor, file.name, startSec, endSec)
+    }
 
+    /**
+     * Same, for audio that is being streamed rather than downloaded.
+     *
+     * [source] is backed by the same cache the player streams through, so this decodes
+     * bytes that have usually already been fetched, and blocks to fetch the ones that
+     * have not — the caller sees an ordinary seekable file either way.
+     */
+    fun decodeWindow(
+        source: android.media.MediaDataSource,
+        label: String,
+        startSec: Double?,
+        endSec: Double?,
+    ): FloatArray {
+        val extractor = MediaExtractor()
+        extractor.setDataSource(source)
+        return decodeWindow(extractor, label, startSec, endSec)
+    }
+
+    private fun decodeWindow(
+        extractor: MediaExtractor,
+        label: String,
+        startSec: Double?,
+        endSec: Double?,
+    ): FloatArray {
         val trackIndex = (0 until extractor.trackCount).firstOrNull { index ->
             extractor.getTrackFormat(index)
                 .getString(MediaFormat.KEY_MIME)
                 ?.startsWith("audio/") == true
         } ?: run {
             extractor.release()
-            throw IllegalStateException("no audio track in ${file.name}")
+            throw IllegalStateException("no audio track in $label")
         }
 
         extractor.selectTrack(trackIndex)

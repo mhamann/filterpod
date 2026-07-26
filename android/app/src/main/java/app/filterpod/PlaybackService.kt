@@ -102,6 +102,9 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Still the default source factory. Streaming through MediaCache is written and
+        // compiles, but changing how every episode is read is not something to leave
+        // running unverified — see the note at the top of MediaCache.kt.
         val exo = ExoPlayer.Builder(this).build().also { player = it }
 
         exo.addListener(object : Player.Listener {
