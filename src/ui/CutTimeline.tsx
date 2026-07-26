@@ -127,7 +127,8 @@ export function CutTimeline({
       </div>
 
       <span
-        className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-100 shadow-lg transition-transform duration-150 group-active:scale-125"
+        // Slightly translucent so the cut markers it sits on top of stay readable through it.
+        className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-100/90 shadow-lg transition-transform duration-150 group-active:scale-125"
         style={{ left: `${progress * 100}%` }}
       />
     </div>

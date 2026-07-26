@@ -121,6 +121,20 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
     }
 
     @PluginMethod
+    fun setSkipIncrements(call: PluginCall) {
+        val backMs = ((call.getDouble("backSec") ?: 15.0) * 1000).toLong()
+        val forwardMs = ((call.getDouble("forwardSec") ?: 30.0) * 1000).toLong()
+
+        // Recorded even when the service is down: this is pushed during app startup,
+        // long before anything is played, and it has to survive until the session is
+        // built or the first notification would show the wrong numbers.
+        PlaybackService.pendingSkipBackMs = backMs
+        PlaybackService.pendingSkipForwardMs = forwardMs
+        service()?.setSkipIncrements(backMs, forwardMs)
+        call.resolve()
+    }
+
+    @PluginMethod
     fun setFilterSpans(call: PluginCall) {
         val array = call.getArray("spans")
         val spans = if (array == null) emptyList() else FilterSpan.fromJson(array)

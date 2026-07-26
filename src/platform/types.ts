@@ -140,6 +140,17 @@ export interface PlayerPlatform {
    * therefore foreground-only.
    */
   setFilterSpans(spans: FilterSpan[]): Promise<void>
+  /**
+   * Sets the increments used by the OS-level skip controls — the notification and
+   * lock-screen buttons on Android, the Media Session action handlers in a browser.
+   *
+   * These are the same values as the in-app skip buttons, which read them from settings
+   * directly. They have to be pushed down separately because the OS controls are driven
+   * by the platform, not by the React tree: on Android the notification button dispatches
+   * straight to the player inside the playback service, with no round trip through the
+   * WebView, which is the entire point of it working while the app is backgrounded.
+   */
+  setSkipIncrements(backSec: number, forwardSec: number): Promise<void>
   onStatus(cb: (s: PlayerStatus) => void): () => void
   /** Fired as each span is skipped, for the "skipped N" UI. */
   onSkip(cb: (span: FilterSpan) => void): () => void

@@ -215,6 +215,8 @@ function createNativePlayer(): PlayerPlatform {
     pause: () => FilterPlayer.pause(),
     seek: (positionSec) => FilterPlayer.seek({ positionSec }),
     setRate: (rate) => FilterPlayer.setRate({ rate }),
+    setSkipIncrements: (backSec, forwardSec) =>
+      FilterPlayer.setSkipIncrements({ backSec, forwardSec }),
     setFilterSpans: (spans) => FilterPlayer.setFilterSpans({ spans: normalizeSpans(spans) }),
     onStatus(cb) {
       statusListeners.push(cb)

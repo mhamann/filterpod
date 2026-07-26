@@ -1,5 +1,6 @@
+import { liveQuery } from 'dexie'
 import { getPlatform } from '@/platform'
-import { initializeStore, reconcileFilterMaps } from '@/data/repo'
+import { getSettings, initializeStore, reconcileFilterMaps } from '@/data/repo'
 import {
   enforceStorageBudget,
   reconcileDownloads,
@@ -45,6 +46,20 @@ async function evictStaleServiceWorker(): Promise<boolean> {
   }
 }
 
+/**
+ * Keeps the OS media controls' skip increments in step with the setting.
+ *
+ * The in-app buttons read the setting on every press, but the notification and
+ * lock-screen buttons live in the playback service and are driven by the OS, so the value
+ * has to be pushed to them. A live query rather than a push from the settings screen:
+ * the service outlives the WebView, and this way it is correct after a restart too.
+ */
+function watchSkipIncrements(): void {
+  liveQuery(() => getSettings()).subscribe((settings) => {
+    void getPlatform().player.setSkipIncrements(settings.skipBackSec, settings.skipForwardSec)
+  })
+}
+
 export async function bootstrap(): Promise<void> {
   if (getPlatform().name === 'android' && (await evictStaleServiceWorker())) {
     // Reload once so the WebView loads assets from the APK rather than the dead cache.
@@ -60,6 +75,7 @@ export async function bootstrap(): Promise<void> {
   void getPlatform().files.requestPersistence()
 
   watchNetwork()
+  watchSkipIncrements()
 
   // The speech model is the one prerequisite filtering cannot start without, so it is
   // fetched in the background here rather than becoming a wall on first play.

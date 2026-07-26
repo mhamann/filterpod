@@ -258,8 +258,23 @@ describe('seeking', () => {
   })
 })
 
+/**
+ * A failed chunk is a genuine conflict between the two things this module guarantees.
+ *
+ * Claiming coverage for audio that was never transcribed lets unfiltered speech through.
+ * Refusing to ever claim it walls the playhead in behind the failure, because the player
+ * will not cross unanalyzed audio — the episode stops dead at that second and no amount
+ * of waiting or pressing play gets past it.
+ *
+ * The resolution is to treat a first failure as probably transient and retry, and to give
+ * up only once a stretch has proved it will not transcribe — reporting an error rather
+ * than doing it quietly. An earlier version instead moved the cursor past the failure
+ * immediately, which produced the worst of both: a permanent hole in coverage that the
+ * pump then worked *ahead* of, so the playhead stayed pinned in front of a gap nothing
+ * would ever come back and fill.
+ */
 describe('failure handling', () => {
-  it('advances past a chunk that fails rather than retrying it forever', async () => {
+  it('retries a failed chunk rather than leaving a hole behind it', async () => {
     transcribe.mockRejectedValueOnce(new Error('decode failed'))
     transcribe.mockResolvedValue([])
     const errors: string[] = []
@@ -274,12 +289,14 @@ describe('failure handling', () => {
 
     expect(errors).toContain('decode failed')
     const windows = requestedWindows()
-    // The second attempt must be a different window, not the same one again.
-    expect(windows[1].startSec).toBeGreaterThan(windows[0].startSec)
+    // The retry covers the same audio; skipping ahead is what left the gap.
+    expect(windows[1]).toEqual(windows[0])
   })
 
-  it('does not mark a failed chunk as analyzed', async () => {
-    transcribe.mockRejectedValue(new Error('decode failed'))
+  it('claims no coverage while a failure could still be transient', async () => {
+    transcribe.mockRejectedValueOnce(new Error('decode failed'))
+    transcribe.mockRejectedValueOnce(new Error('decode failed'))
+    transcribe.mockResolvedValue([])
 
     const { ranges } = await startLiveFilter({
       ...baseOptions,
@@ -289,9 +306,27 @@ describe('failure handling', () => {
     })
     stopLiveFilter()
 
-    // Nothing was successfully transcribed, so nothing may be claimed as safe.
-    expect(ranges).toEqual([])
-    expect(isAnalyzed(ranges, 10)).toBe(false)
+    // One failure must never be enough to call a stretch examined.
+    const firstAttempt = requestedWindows()[0]
+    expect(isAnalyzed(ranges, firstAttempt.startSec + 1)).toBe(true)
+    expect(transcribe.mock.calls.length).toBeGreaterThan(1)
+  })
+
+  it('gives up on a chunk that keeps failing, so playback is not walled in', async () => {
+    transcribe.mockRejectedValue(new Error('decode failed'))
+    const errors: string[] = []
+
+    const { ranges } = await startLiveFilter({
+      ...baseOptions,
+      episode: episode({ durationSec: 120 }),
+      startAtSec: 0,
+      callbacks: { onUpdate: () => {}, onError: (m) => errors.push(m) },
+    })
+    stopLiveFilter()
+
+    // Abandoned, so the playhead can move — but never silently.
+    expect(isAnalyzed(ranges, 1)).toBe(true)
+    expect(errors).toContain('decode failed')
   })
 })
 
