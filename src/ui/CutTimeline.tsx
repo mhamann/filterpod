@@ -80,6 +80,9 @@ export function CutTimeline({
   return (
     <div
       ref={trackRef}
+      // Scrubbing tracks the pointer, so this must not also drag the Now Playing panel
+      // down; the panel's gesture handler skips anything inside a [data-no-drag].
+      data-no-drag
       role="slider"
       tabIndex={0}
       aria-label="Playback position"
