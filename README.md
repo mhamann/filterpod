@@ -16,15 +16,17 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the reasoning behind i
 ## How it works
 
 ```
-subscribe → download → press play → analyze a lead-in → play, filtering ahead as you listen
+subscribe → press play → analyze a short lead-in → play, filtering ahead as you listen
 ```
 
 Filtering needs word-level timings, which means transcribing the episode — the most
-expensive thing the app does. Rather than transcribing every download up front (which
-would burn CPU and battery on episodes you may never play), it runs **just-in-time**:
-pressing play analyzes the first ~90 seconds, playback starts, and transcription keeps
-running ahead of the playhead while you listen, then idles once it is comfortably in
-front.
+expensive thing the app does. Rather than transcribing everything up front (which would
+burn CPU and battery on episodes you may never play), it runs **just-in-time**: pressing
+play analyzes a short lead-in, playback starts, and transcription keeps running ahead of
+the playhead while you listen, then idles once it is comfortably in front. The lead-in is
+sized as a latency budget rather than an accuracy one — about fifteen seconds of audio,
+which a Pixel 7 Pro transcribes in three or four. Jumping to a new spot re-targets the
+pipeline there and costs the same few seconds again.
 
 Playback never runs past the part that has been checked — unanalyzed audio is *unknown*,
 not clean — so if it ever catches up, the player pauses and says so. Feeds that publish a
@@ -32,12 +34,19 @@ not clean — so if it ever catches up, the player pauses and says so. Feeds tha
 clean outright, or mark the clean stretches as checked so transcription only ever touches
 the handful of suspect windows.
 
-This all works **offline**. Episodes are already local once downloaded and transcription
+Episodes **stream by default**; downloading is how you keep one for offline, not a step
+you have to take before listening. That works because playback and transcription read the
+same bytes through one shared cache, so an episode is fetched once no matter how many
+things want it.
+
+Downloaded episodes then work **entirely offline**: the audio is local and transcription
 runs on-device, so the only thing filtering ever needs the network for is fetching the
 speech model once — Settings has a "Ready for offline" action that does exactly that.
 
-The player then seeks past each flagged span. On Android that runs in a Media3 foreground
-service, so it keeps working with the screen off.
+The player then seeks past each flagged span, deciding slightly ahead of the playhead so
+the cut lands before the word rather than after it — audio already handed to the output,
+or sitting in a Bluetooth headset, cannot be recalled. On Android this runs in a Media3
+foreground service, so it keeps working with the screen off.
 
 ## Running it
 
@@ -121,6 +130,13 @@ Every `LOAD` segment must show alignment `0x4000`.
 | Off | nothing | |
 
 You can add your own words to cut, or exempt words from the built-in list, in Settings.
+
+## License
+
+[GNU AGPL v3](LICENSE). Copyleft, including over a network: if you run a modified version
+where people can reach it, they are entitled to its source. That is the point — a filter
+you cannot inspect is a filter you are taking on trust, and this one decides what you do
+and do not get to hear.
 
 ## Layout
 
