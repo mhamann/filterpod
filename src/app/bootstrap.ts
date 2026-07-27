@@ -1,6 +1,11 @@
 import { liveQuery } from 'dexie'
 import { getPlatform } from '@/platform'
-import { getSettings, initializeStore, reconcileFilterMaps } from '@/data/repo'
+import {
+  getSettings,
+  initializeStore,
+  pruneStalePreviews,
+  reconcileFilterMaps,
+} from '@/data/repo'
 import {
   enforceStorageBudget,
   reconcileDownloads,
@@ -94,6 +99,7 @@ export async function bootstrap(): Promise<void> {
 
   void (async () => {
     try {
+      await pruneStalePreviews()
       await refreshAndAutoDownload()
       await enforceStorageBudget()
     } catch {

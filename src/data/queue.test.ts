@@ -1,10 +1,11 @@
 import 'fake-indexeddb/auto'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import {
   clearQueue,
   enqueueEpisode,
   headOfQueue,
+  pruneStalePreviews,
   listQueue,
   moveInQueue,
   removeFromQueue,
@@ -96,8 +97,56 @@ describe('the play queue', () => {
     await removeFromQueue('b')
     expect(await headOfQueue()).toBe('a')
   })
+})
 
-  afterAll(async () => {
-    db.close()
+describe('pruneStalePreviews', () => {
+  const OLD = Date.now() - 30 * 24 * 60 * 60 * 1000
+
+  async function seedShow(id: string, opts: { subscribed?: boolean; old?: boolean } = {}) {
+    await db.podcasts.put({
+      id, feedUrl: `https://example.com/${id}.xml`, title: id, author: '', description: '',
+      artworkUrl: '', categories: [], explicit: false,
+      lastFetchedAt: opts.old ? OLD : Date.now(),
+    })
+    await db.episodes.put({
+      id: `${id}-e1`, podcastId: id, guid: `${id}-e1`, title: 'Ep', description: '',
+      audioUrl: `https://example.com/${id}.mp3`, publishedAt: 1, explicit: false, transcripts: [],
+    })
+    if (opts.subscribed) {
+      await db.subscriptions.put({
+        podcastId: id, subscribedAt: Date.now(), autoDownload: false,
+        autoDownloadLimit: 3, notifyOnNew: false,
+      })
+    }
+  }
+
+  beforeEach(async () => {
+    await Promise.all([
+      db.podcasts.clear(), db.episodes.clear(), db.subscriptions.clear(),
+      db.progress.clear(), db.downloads.clear(), db.queue.clear(),
+    ])
+  })
+
+  it('drops only stale, untouched, unsubscribed previews', async () => {
+    await seedShow('stale', { old: true })
+    await seedShow('fresh')
+    await seedShow('kept-sub', { subscribed: true, old: true })
+    await seedShow('kept-progress', { old: true })
+    await db.progress.put({
+      episodeId: 'kept-progress-e1', positionSec: 100, durationSec: 900,
+      played: false, lastPlayedAt: Date.now(),
+    })
+    await seedShow('kept-queued', { old: true })
+    await enqueueEpisode('kept-queued-e1')
+
+    const pruned = await pruneStalePreviews()
+
+    expect(pruned).toBe(1)
+    expect(await db.podcasts.get('stale')).toBeUndefined()
+    expect(await db.episodes.get('stale-e1')).toBeUndefined()
+    // Everything with any human trace survives.
+    for (const id of ['fresh', 'kept-sub', 'kept-progress', 'kept-queued']) {
+      expect(await db.podcasts.get(id)).toBeDefined()
+    }
   })
 })

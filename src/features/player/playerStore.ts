@@ -13,6 +13,7 @@ import {
   getSettings,
   enqueueEpisode,
   headOfQueue,
+  recordMeasuredDuration,
   removeFromQueue,
   listWordOverrides,
   saveProgress,
@@ -23,6 +24,7 @@ import {
   retargetLiveFilter,
   startLiveFilter,
   stopLiveFilter,
+  updateDurationSec,
 } from '@/features/filter/liveFilter'
 
 /**
@@ -101,6 +103,9 @@ interface PlayerState {
 let unsubscribeStatus: (() => void) | null = null
 let unsubscribeSkip: (() => void) | null = null
 let lastSaveAt = 0
+
+/** Episodes whose measured duration was already written back this session. */
+const measuredDurationSaved = new Set<string>()
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   episode: null,
@@ -268,6 +273,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         skippedSec: status.skippedSec,
         error: status.error,
       })
+
+      // The player's measured duration is ground truth; feeds lie by whole percents.
+      // Written back once per episode so the timeline, the remaining-time display and
+      // the filter pipeline's end clamp stop trusting the feed's number.
+      if (
+        status.durationSec > 1 &&
+        !measuredDurationSaved.has(episodeId) &&
+        Math.abs(status.durationSec - (episode.durationSec ?? 0)) > 2
+      ) {
+        measuredDurationSaved.add(episodeId)
+        updateDurationSec(status.durationSec)
+        void recordMeasuredDuration(episodeId, status.durationSec)
+      }
 
       // Keep the analysis frontier ahead of where we are.
       maybeResume(status.positionSec)

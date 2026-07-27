@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/data/db'
 import { Artwork, Button, EmptyState, SectionLabel } from '@/ui/components'
@@ -20,6 +21,7 @@ import { Icon } from '@/ui/Icon'
  */
 export function Library() {
   const navigate = useNavigate()
+  const [query, setQuery] = useState('')
 
   const subscriptions = useLiveQuery(
     async () => {
@@ -56,10 +58,51 @@ export function Library() {
 
   const hasNothing = subscriptions.length === 0
 
+  /**
+   * The search filters what is already here; anything else is one tap away.
+   * Matching title or author, case-blind — a library search is a recall aid, not a
+   * search engine, so substring matching is the right amount of clever.
+   */
+  const trimmed = query.trim().toLowerCase()
+  const visibleShows =
+    trimmed === ''
+      ? subscriptions
+      : subscriptions.filter(
+          (podcast) =>
+            podcast.title.toLowerCase().includes(trimmed) ||
+            podcast.author.toLowerCase().includes(trimmed),
+        )
+
   return (
     <PullToRefresh onRefresh={async () => void (await refreshAndAutoDownload())}>
       <div className="animate-rise pb-6">
         <Header title="Library" action={<QueueButton onClick={() => navigate('/queue')} />} />
+
+        {subscriptions.length > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <div className="flex items-center gap-2.5 rounded-full bg-panel-850 px-4 py-2 ring-1 ring-panel-700 focus-within:ring-ember-500/50">
+              <Icon name="search" size={15} className="shrink-0 text-ink-600" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find a show"
+                inputMode="search"
+                autoCapitalize="off"
+                autoCorrect="off"
+                className="w-full bg-transparent text-[14px] text-ink-100 outline-none placeholder:text-ink-600"
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery('')}
+                  aria-label="Clear"
+                  className="focus-ring shrink-0 rounded-full text-ink-600"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
       {hasNothing ? (
         <EmptyState
@@ -76,7 +119,7 @@ export function Library() {
         />
       ) : (
         <>
-          {continueRows.length > 0 && (
+          {query.trim() === '' && continueRows.length > 0 && (
             <section className="px-4 pt-2 pb-5">
               <SectionLabel>Continue</SectionLabel>
               <div className="space-y-2">
@@ -95,7 +138,7 @@ export function Library() {
           <section className="px-4 pb-5">
             <SectionLabel>Shows</SectionLabel>
             <div className="grid grid-cols-3 gap-3">
-              {subscriptions.map((podcast) => (
+              {visibleShows.map((podcast) => (
                 <Link
                   key={podcast.id}
                   to={`/podcast/${podcast.id}`}
@@ -112,8 +155,23 @@ export function Library() {
                 </Link>
               ))}
             </div>
-          </section>
 
+            {trimmed !== '' && (
+              <div className="pt-3">
+                {visibleShows.length === 0 && (
+                  <p className="pb-2 text-[13px] text-ink-600">Nothing in your library matches.</p>
+                )}
+                <Button
+                  variant="secondary"
+                  icon="search"
+                  className="w-full"
+                  onClick={() => navigate('/discover', { state: { term: query.trim() } })}
+                >
+                  Search everywhere for “{query.trim()}”
+                </Button>
+              </div>
+            )}
+          </section>
         </>
       )}
       </div>

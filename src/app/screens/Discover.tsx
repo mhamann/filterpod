@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { searchPodcasts, type SearchResult } from '@/features/discovery/search'
 import { fetchTopPodcasts, type ChartPodcast } from '@/features/discovery/charts'
 import { subscribeToFeed } from '@/features/subscriptions/service'
+import { fetchFeed } from '@/features/feeds/refresh'
 import { Artwork, Button, EmptyState } from '@/ui/components'
 import { Icon } from '@/ui/Icon'
 import { Header } from './Library'
@@ -11,7 +12,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 
 /** Search by name, paste a feed URL, or pick from the charts below. */
 export function Discover() {
-  const [term, setTerm] = useState('')
+  // A search started on the Library lands here with its term intact, so the user
+  // types it once and the two screens behave as one search.
+  const handedTerm = (useLocation().state as { term?: string } | null)?.term ?? ''
+  const [term, setTerm] = useState(handedTerm)
   const [results, setResults] = useState<SearchResult[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +61,27 @@ export function Discover() {
     setError(null)
     try {
       const result = await subscribeToFeed(feedUrl)
+      navigate(`/podcast/${result.podcastId}`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Opens a show without subscribing to it.
+   *
+   * fetchFeed persists the podcast and its episodes but writes no subscription row, so
+   * the show page opens with a Subscribe button and playable episodes — a one-off
+   * listen never has to become a commitment. Stale previews are pruned at startup.
+   */
+  const previewFeed = async (feedUrl: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await fetchFeed(feedUrl, false)
+      if (result.error) throw new Error(result.error)
       navigate(`/podcast/${result.podcastId}`)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -111,7 +136,14 @@ export function Discover() {
         )}
       </div>
 
-      {!term && <PopularGrid subscribedIds={subscribedIds} busy={busy} onAdd={addFeed} />}
+      {!term && (
+        <PopularGrid
+          subscribedIds={subscribedIds}
+          busy={busy}
+          onAdd={addFeed}
+          onPreview={(feedUrl) => void previewFeed(feedUrl)}
+        />
+      )}
 
       {busy && !looksLikeUrl && (
         <p className="silkscreen animate-pulse-ember px-4 py-3">Searching…</p>
@@ -123,11 +155,17 @@ export function Discover() {
             key={result.id}
             className="flex items-center gap-3 border-b border-panel-800 px-4 py-3"
           >
-            <Artwork src={result.artworkUrl} alt={result.title} className="h-14 w-14" />
-            <div className="min-w-0 flex-1">
-              <h3 className="truncate text-[14px] font-medium">{result.title}</h3>
-              <p className="truncate text-[12px] text-ink-600">{result.author}</p>
-            </div>
+            <button
+              onClick={() => void previewFeed(result.feedUrl)}
+              disabled={busy}
+              className="focus-ring flex min-w-0 flex-1 items-center gap-3 text-left"
+            >
+              <Artwork src={result.artworkUrl} alt={result.title} className="h-14 w-14" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] font-medium">{result.title}</span>
+                <span className="block truncate text-[12px] text-ink-600">{result.author}</span>
+              </span>
+            </button>
             {subscribedIds.has(result.id) ? (
               <Button
                 size="sm"
@@ -166,10 +204,12 @@ function PopularGrid({
   subscribedIds,
   busy,
   onAdd,
+  onPreview,
 }: {
   subscribedIds: Set<string>
   busy: boolean
   onAdd(feedUrl: string): Promise<void>
+  onPreview(feedUrl: string): void
 }) {
   const navigate = useNavigate()
   const [shows, setShows] = useState<ChartPodcast[] | null>(null)
@@ -215,9 +255,9 @@ function PopularGrid({
             <button
               key={show.id}
               disabled={busy}
-              onClick={() =>
-                subscribed ? navigate(`/podcast/${show.id}`) : void onAdd(show.feedUrl)
-              }
+              // The tile is a look, not a commitment: it opens the show's page. The
+              // corner badge is the shortcut for people who already know they want it.
+              onClick={() => onPreview(show.feedUrl)}
               className="focus-ring group block text-left"
             >
               <span className="relative block">
@@ -227,13 +267,20 @@ function PopularGrid({
                   className="aspect-square w-full transition group-active:scale-[0.97]"
                 />
                 <span
+                  role="button"
+                  aria-label={subscribed ? `Open ${show.title}` : `Subscribe to ${show.title}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (subscribed) navigate(`/podcast/${show.id}`)
+                    else void onAdd(show.feedUrl)
+                  }}
                   className={
                     subscribed
-                      ? 'absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-sage-500 text-panel-950'
-                      : 'absolute right-1.5 bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-panel-950/80 text-ink-100 ring-1 ring-panel-600'
+                      ? 'absolute right-1.5 bottom-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-sage-500 text-panel-950'
+                      : 'absolute right-1.5 bottom-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-panel-950/80 text-ink-100 ring-1 ring-panel-600'
                   }
                 >
-                  <Icon name={subscribed ? 'check' : 'plus'} size={13} />
+                  <Icon name={subscribed ? 'check' : 'plus'} size={14} />
                 </span>
               </span>
               <span className="mt-1.5 line-clamp-2 block text-[12px] leading-tight text-ink-300">

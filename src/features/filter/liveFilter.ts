@@ -314,6 +314,22 @@ export function activeEpisodeId(): string | null {
   return active?.episode.id ?? null
 }
 
+/**
+ * Corrects the session's idea of how long the episode is, from measured playback.
+ *
+ * Feeds lie about duration — one real episode's itunes:duration was 4.5% long. The
+ * session's duration bounds where the pipeline stops and how end-of-episode is judged,
+ * so a too-long value has it transcribing audio that does not exist (each attempt
+ * failing, churning the retry path at the tail), and a too-short one would leave the
+ * real tail unfiltered. The player's measured duration is ground truth once known.
+ */
+export function updateDurationSec(durationSec: number): void {
+  if (!active) return
+  if (durationSec > 1 && Math.abs(active.durationSec - durationSec) > 2) {
+    active.durationSec = durationSec
+  }
+}
+
 /** True when the episode is fully analyzed from the current playhead onward. */
 function reachedEnd(session: Session): boolean {
   if (!session.durationSec) return false
