@@ -29,6 +29,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 class TranscriberPlugin : Plugin() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * One transcription at a time. The whisper context is a single native object with
+     * no internal locking; with the JS side now timing out hung chunks and moving on,
+     * a late-running job could otherwise overlap the next one on the same context.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val transcribeDispatcher = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1)
     private val cancelled = ConcurrentHashMap<String, AtomicBoolean>()
 
     @Volatile private var contextPtr: Long = 0
@@ -84,7 +92,7 @@ class TranscriberPlugin : Plugin() {
     @PluginMethod
     fun ensureModel(call: PluginCall) {
         val model = call.getString("model") ?: "base.en"
-        scope.launch {
+        scope.launch(transcribeDispatcher) {
             try {
                 downloadModelIfNeeded(model)
                 loadContext(model)
@@ -164,7 +172,7 @@ class TranscriberPlugin : Plugin() {
         val flag = AtomicBoolean(false)
         cancelled[requestId] = flag
 
-        scope.launch {
+        scope.launch(transcribeDispatcher) {
             try {
                 // Step-by-step, because a single timing line at the end cannot say which
                 // stage is slow — and a stage that never returns logs nothing at all.

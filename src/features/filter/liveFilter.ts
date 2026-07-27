@@ -127,6 +127,18 @@ const MAX_CHUNK_ATTEMPTS = 3
 /** Wait between attempts at a failing chunk, multiplied by the attempt number. */
 const RETRY_BACKOFF_MS = 2_000
 
+/**
+ * Hard ceiling on a single chunk's transcription.
+ *
+ * A streamed chunk's network read can hang without erroring — a dead connection just
+ * blocks — and a hung chunk used to wedge the pump forever: no result, no failure, no
+ * coverage updates, and the player waiting politely at the frontier for a check that
+ * would never finish. The playhead looked frozen and play did nothing, which a listener
+ * has no way to distinguish from a crash. Generous (a 45s chunk normally takes ~15s
+ * even backgrounded), because firing early turns a slow network into false failures.
+ */
+const CHUNK_TIMEOUT_MS = 90_000
+
 interface Session {
   episode: Episode
   fileKey: string
@@ -428,15 +440,19 @@ async function transcribeNextChunk(session: Session): Promise<void> {
   session.chunk = { startSec, endSec, controller }
 
   try {
-    const words = await getPlatform().transcriber.transcribe({
-      episodeId: session.episode.id,
-      fileKey: session.fileKey,
-      // Used only when the episode is not on disk; the native side prefers the file.
-      url: session.episode.audioUrl,
-      model: session.model,
-      windows: [{ startSec, endSec }],
-      signal: controller.signal,
-    })
+    const words = await withTimeout(
+      getPlatform().transcriber.transcribe({
+        episodeId: session.episode.id,
+        fileKey: session.fileKey,
+        // Used only when the episode is not on disk; the native side prefers the file.
+        url: session.episode.audioUrl,
+        model: session.model,
+        windows: [{ startSec, endSec }],
+        signal: controller.signal,
+      }),
+      CHUNK_TIMEOUT_MS,
+      controller,
+    )
 
     if (active !== session || controller.signal.aborted) return
 
@@ -453,8 +469,11 @@ async function transcribeNextChunk(session: Session): Promise<void> {
   } catch (error) {
     // A chunk cancelled because the listener moved is not a failure, and must not count
     // against this stretch — the audio was never examined, and saying otherwise would
-    // let a few seeks mark a region analyzed that nobody ever looked at.
-    if (controller.signal.aborted) return
+    // let a few seeks mark a region analyzed that nobody ever looked at. A watchdog
+    // timeout also aborts (to discard the late result), but it IS a failure and must
+    // reach the retry path, or a hung chunk would wedge silently all over again.
+    const timedOut = error instanceof Error && error.message.startsWith('chunk timed out')
+    if (controller.signal.aborted && !timedOut) return
     await abandonOrRetry(session, startSec, endSec, error)
   } finally {
     session.controller.signal.removeEventListener('abort', abortChunk)
@@ -495,6 +514,23 @@ async function abandonOrRetry(
   session.abandoned = mergeRanges([...session.abandoned, { startSec, endSec }])
   session.ranges = mergeRanges([...session.ranges, { startSec, endSec }])
   session.callbacks.onUpdate(session.spans, session.ranges)
+}
+
+/**
+ * Rejects if [promise] outlives [ms], aborting the underlying request so a late result
+ * is discarded rather than applied to a session that has moved on.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, controller: AbortController): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller.abort()
+      reject(new Error(`chunk timed out after ${ms / 1000}s`))
+    }, ms)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (error) => { clearTimeout(timer); reject(error) },
+    )
+  })
 }
 
 /** Abortable sleep, so stopping a session does not leave a retry timer running. */
