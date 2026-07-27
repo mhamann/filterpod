@@ -10,7 +10,9 @@ import { podcastIdFor } from '@/data/db'
  * comma-separated ids, so "top 30 with feeds" costs exactly two requests.
  */
 
-const CHART_URL = 'https://rss.applemarketingtools.com/api/v2/us/podcasts/top/30/podcasts.json'
+// The canonical host — applemarketingtools.com now 301s here, and there is no reason
+// to spend a round trip on the redirect.
+const CHART_URL = 'https://rss.marketingtools.apple.com/api/v2/us/podcasts/top/30/podcasts.json'
 const LOOKUP_URL = 'https://itunes.apple.com/lookup'
 
 export interface ChartPodcast {
