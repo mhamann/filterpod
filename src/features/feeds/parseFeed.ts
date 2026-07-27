@@ -92,6 +92,22 @@ const TRANSCRIPT_TYPES: Record<string, TranscriptRef['type']> = {
   'text/plain': 'text/plain',
 }
 
+/**
+ * The `podcast:chapters` URL, when the item carries one.
+ *
+ * The spec says type="application/json+chapters", but plain "application/json" is what
+ * some hosts actually emit, so anything JSON-shaped is accepted. Non-JSON chapter
+ * formats (PSC XML) exist but are rare enough not to carry a parser for.
+ */
+function parseChaptersUrl(item: XmlNode): string | undefined {
+  for (const node of asArray(item['podcast:chapters'])) {
+    const url = attr(node, 'url')
+    const type = (attr(node, 'type') ?? '').toLowerCase()
+    if (url && type.includes('json')) return url
+  }
+  return undefined
+}
+
 function parseTranscripts(item: XmlNode): TranscriptRef[] {
   const refs: TranscriptRef[] = []
   for (const node of asArray(item['podcast:transcript'])) {
@@ -171,6 +187,7 @@ export function parseFeed(xml: string, feedUrl: string): ParsedFeed {
       explicit: parseExplicit(text(item['itunes:explicit'])) || podcast.explicit,
       artworkUrl: attr(item['itunes:image'], 'href'),
       transcripts: parseTranscripts(item),
+      chaptersUrl: parseChaptersUrl(item),
     })
   }
 

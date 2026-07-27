@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type {
+  Chapter,
   Download,
   Episode,
   FilterMap,
@@ -20,6 +21,13 @@ export interface WordOverride {
   createdAt: number
 }
 
+/** Cached chapters for an episode, so they survive going offline. */
+export interface ChapterCache {
+  episodeId: string
+  chapters: Chapter[]
+  fetchedAt: number
+}
+
 /** Single-row table holding app settings under a fixed key. */
 export interface SettingsRow extends Settings {
   id: 'singleton'
@@ -36,6 +44,7 @@ class FilterPodDatabase extends Dexie {
   wordOverrides!: EntityTable<WordOverride, 'term'>
   settings!: EntityTable<SettingsRow, 'id'>
   queue!: EntityTable<QueueItem, 'episodeId'>
+  chapters!: EntityTable<ChapterCache, 'episodeId'>
 
   constructor() {
     super('filterpod')
@@ -63,6 +72,12 @@ class FilterPodDatabase extends Dexie {
     // and indexed by position because that is the order it is always read in.
     this.version(3).stores({
       queue: 'episodeId, position',
+    })
+
+    // v4: fetched chapter files. Cached rather than refetched per open, and kept so a
+    // downloaded episode still has its chapters with no connection.
+    this.version(4).stores({
+      chapters: 'episodeId',
     })
   }
 }

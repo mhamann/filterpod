@@ -222,12 +222,13 @@ listening time). The mapping between them is derived from the filter map.
 Dexie/IndexedDB, one store per concern:
 
 - `podcasts` — feed metadata, artwork, feed URL, etag/last-modified for conditional refresh
-- `episodes` — enclosure URL, duration, guid, publish date, `podcast:transcript` URLs
+- `episodes` — enclosure URL, duration, guid, publish date, `podcast:transcript` and `podcast:chapters` URLs
 - `subscriptions` — subscribed podcasts + per-feed settings (auto-download, filter profile)
 - `progress` — position, played/unplayed, completion, last-played timestamp
 - `downloads` — local file handle, byte progress, state
 - `filterMaps` — the skip spans per episode, plus the engine/model version that produced them
 - `queue` — play order, densely numbered; position 0 is whatever is playing
+- `chapters` — fetched `podcast:chapters` files, cached so they work offline
 - `settings` — global filter profile, playback defaults, storage policy
 - `wordlist` — bundled tiered list plus user allow/block overrides
 
