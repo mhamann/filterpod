@@ -21,6 +21,8 @@ interface CutTimelineProps {
    * scrub past it.
    */
   analyzedUntilSec?: number
+  /** Chapter starts, rendered as faint ticks so the structure is visible at a glance. */
+  chapterMarks?: number[]
   /** Compact form for the mini player: shorter, no handle, not interactive. */
   compact?: boolean
 }
@@ -31,6 +33,7 @@ export function CutTimeline({
   spans,
   onSeek,
   analyzedUntilSec,
+  chapterMarks,
   compact = false,
 }: CutTimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -110,6 +113,16 @@ export function CutTimeline({
             className="absolute inset-y-0 left-0 bg-sage-500/25"
             style={{ width: `${Math.min(100, (analyzedUntilSec / safeDuration) * 100)}%` }}
           />
+        )}
+        {/* Chapter boundaries: navigation hints, kept fainter than anything meaningful. */}
+        {chapterMarks?.map((sec) =>
+          sec > 0 && sec < safeDuration ? (
+            <span
+              key={`ch-${sec}`}
+              className="absolute inset-y-0 w-[2px] bg-ink-100/20"
+              style={{ left: `${(sec / safeDuration) * 100}%` }}
+            />
+          ) : null,
         )}
         {/* Cuts sit beneath the elapsed fill, so passed cuts read as history. */}
         {marks.map((mark) => (

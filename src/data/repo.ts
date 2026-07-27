@@ -258,6 +258,62 @@ export async function deleteWordOverride(term: string): Promise<void> {
   await db.wordOverrides.delete(term)
 }
 
+/**
+ * Records the duration the player actually measured for an episode.
+ *
+ * Feed-declared durations are wrong often enough to matter — the timeline scale, the
+ * remaining-time display and the filter pipeline's end-of-episode clamp all key off
+ * this value. Measured playback is ground truth, so it wins once known.
+ */
+export async function recordMeasuredDuration(
+  episodeId: EpisodeId,
+  durationSec: number,
+): Promise<void> {
+  await db.episodes.update(episodeId, { durationSec: Math.round(durationSec) })
+}
+
+/** How long a previewed-but-never-touched show is kept before startup prunes it. */
+const PREVIEW_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Removes shows that were previewed from Discover and then walked away from.
+ *
+ * Previewing persists a podcast and its episodes without a subscription, which is what
+ * makes one-off playback work — but every browse would otherwise grow the database
+ * forever. Deliberately guarded: a show survives if it is subscribed, if any of its
+ * episodes has listening progress, a download, a queue slot, or a chapter cache entry,
+ * or if it was fetched recently. Only the never-touched and stale get dropped.
+ */
+export async function pruneStalePreviews(): Promise<number> {
+  const cutoff = Date.now() - PREVIEW_TTL_MS
+  const subscribed = new Set((await db.subscriptions.toArray()).map((s) => s.podcastId))
+  const candidates = (await db.podcasts.toArray()).filter(
+    (podcast) => !subscribed.has(podcast.id) && (podcast.lastFetchedAt ?? 0) < cutoff,
+  )
+  if (candidates.length === 0) return 0
+
+  let pruned = 0
+  for (const podcast of candidates) {
+    const episodes = await db.episodes.where('podcastId').equals(podcast.id).toArray()
+    const ids = episodes.map((episode) => episode.id)
+    const [progress, downloads, queued] = await Promise.all([
+      db.progress.where('episodeId').anyOf(ids).count(),
+      db.downloads.where('episodeId').anyOf(ids).count(),
+      db.queue.where('episodeId').anyOf(ids).count(),
+    ])
+    if (progress > 0 || downloads > 0 || queued > 0) continue
+
+    await db.transaction('rw', db.podcasts, db.episodes, db.filterMaps, db.chapters, async () => {
+      await db.episodes.bulkDelete(ids)
+      await db.filterMaps.bulkDelete(ids)
+      await db.chapters.bulkDelete(ids)
+      await db.podcasts.delete(podcast.id)
+    })
+    pruned++
+  }
+  return pruned
+}
+
 // --- play queue -------------------------------------------------------------
 
 /**

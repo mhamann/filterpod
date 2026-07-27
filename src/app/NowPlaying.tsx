@@ -57,6 +57,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
     setRate,
   } = usePlayerStore()
   const [showRates, setShowRates] = useState(false)
+  const [showChapters, setShowChapters] = useState(false)
   const navigate = useNavigate()
 
   /**
@@ -252,6 +253,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
             durationSec={durationSec}
             spans={spans}
             analyzedUntilSec={frontier}
+            chapterMarks={chapters.map((chapter) => chapter.startSec)}
             onSeek={seek}
           />
           <div className="flex items-center justify-between px-0.5">
@@ -262,6 +264,26 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
               −{timecode(remaining)}
             </span>
           </div>
+
+          {chapters.length > 0 && (
+            /*
+              One quiet row instead of a list: the full list lived inline in the panel
+              first and buried the transport under a scroll. The chapter you are in is
+              the only one worth permanent screen space; the rest are a tap away in the
+              sheet, and the timeline ticks give the episode's shape at a glance.
+            */
+            <button
+              data-no-drag
+              onClick={() => setShowChapters(true)}
+              className="focus-ring mx-auto mt-2.5 flex max-w-full items-center gap-1.5 rounded-full bg-panel-850 px-3.5 py-1.5 ring-1 ring-panel-700"
+            >
+              <Icon name="queue" size={13} className="shrink-0 text-ink-500" />
+              <span className="truncate text-[12px] text-ink-300">
+                {chapterAt(chapters, positionSec)?.title ?? 'Chapters'}
+              </span>
+              <span className="tabular shrink-0 text-[11px] text-ink-600">{chapters.length}</span>
+            </button>
+          )}
         </div>
 
         <div className="mt-8 flex items-center justify-center gap-6">
@@ -313,19 +335,50 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
           </div>
         )}
 
-        {chapters.length > 0 && (
-          <section className="mt-8">
-            <p className="silkscreen mb-2">Chapters</p>
-            <ol className="overflow-hidden rounded-xl ring-1 ring-panel-800">
+        {state === 'error' && (
+          <p className="mt-6 text-center text-sm text-alarm-400">
+            Playback failed. Try re-downloading this episode.
+          </p>
+        )}
+      </div>
+
+      {showChapters && (
+        /*
+          A sheet rather than a tab or an inline list: a tab would hide the transport
+          entirely, and the point of chapter-jumping is doing it while the play controls
+          stay in reach. The sheet caps at just over half the panel, so the artwork and
+          title remain visible behind it.
+        */
+        <div data-no-drag className="absolute inset-0 z-10 flex flex-col justify-end">
+          <button
+            aria-label="Close chapters"
+            onClick={() => setShowChapters(false)}
+            className="flex-1 bg-panel-950/60"
+          />
+          <div className="max-h-[58%] overflow-y-auto rounded-t-2xl border-t border-panel-700 bg-panel-900 pb-6 shadow-2xl shadow-black/60">
+            <div className="sticky top-0 flex items-center justify-between border-b border-panel-800 bg-panel-900 px-4 py-3">
+              <span className="silkscreen">Chapters</span>
+              <button
+                onClick={() => setShowChapters(false)}
+                aria-label="Close"
+                className="focus-ring rounded-full p-1.5 text-ink-500"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+            <ol>
               {chapters.map((chapter, index) => {
                 const isCurrent = chapterAt(chapters, positionSec) === chapter
                 return (
                   <li key={chapter.startSec} className="border-b border-panel-800 last:border-b-0">
                     <button
-                      onClick={() => void seek(chapter.startSec)}
+                      onClick={() => {
+                        void seek(chapter.startSec)
+                        setShowChapters(false)
+                      }}
                       className={clsx(
-                        'focus-ring flex w-full items-center gap-3 px-3 py-2.5 text-left',
-                        isCurrent ? 'bg-ember-500/[0.07]' : 'bg-panel-900/60',
+                        'focus-ring flex w-full items-center gap-3 px-4 py-3 text-left',
+                        isCurrent && 'bg-ember-500/[0.07]',
                       )}
                     >
                       <span
@@ -349,15 +402,9 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
                 )
               })}
             </ol>
-          </section>
-        )}
-
-        {state === 'error' && (
-          <p className="mt-6 text-center text-sm text-alarm-400">
-            Playback failed. Try re-downloading this episode.
-          </p>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
