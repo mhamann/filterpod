@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/data/db'
 import { clearQueue } from '@/data/repo'
-import { UpNext } from '@/ui/UpNext'
+import { QueueList } from '@/ui/QueueList'
 import { Icon } from '@/ui/Icon'
 import { Header } from './Library'
 
@@ -37,13 +37,13 @@ export function Queue() {
           <Icon name="queue" size={26} className="mx-auto mb-3 text-panel-600" />
           <p className="text-[14px] text-ink-300">Nothing queued yet.</p>
           <p className="mx-auto mt-1.5 max-w-[260px] text-[12px] leading-relaxed text-ink-600">
-            Use the queue button on any episode to line it up. Whatever is here plays in
-            order once the current episode ends.
+            Use the queue button on any episode to line it up. Whatever is playing sits at
+            the top, and the rest follow it in order.
           </p>
         </div>
       ) : (
         <div className="px-4 pt-2">
-          <UpNext showHeading={false} />
+          <QueueList />
         </div>
       )}
     </div>

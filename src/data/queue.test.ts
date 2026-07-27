@@ -3,8 +3,8 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db'
 import {
   clearQueue,
-  dequeueNext,
   enqueueEpisode,
+  headOfQueue,
   listQueue,
   moveInQueue,
   removeFromQueue,
@@ -80,14 +80,21 @@ describe('the play queue', () => {
     expect(await order()).toEqual(['c', 'a'])
   })
 
-  it('takes from the front and empties cleanly', async () => {
+  it('reports the head, which is whatever is playing', async () => {
+    expect(await headOfQueue()).toBeUndefined()
+
     await enqueueEpisode('a')
     await enqueueEpisode('b')
+    expect(await headOfQueue()).toBe('a')
 
-    expect(await dequeueNext()).toBe('a')
-    expect(await order()).toEqual(['b'])
-    expect(await dequeueNext()).toBe('b')
-    expect(await dequeueNext()).toBeUndefined()
+    // Pressing play on something further down brings it to the front.
+    await enqueueEpisode('b', { next: true })
+    expect(await headOfQueue()).toBe('b')
+    expect(await order()).toEqual(['b', 'a'])
+
+    // Finishing it drops the head and promotes the next.
+    await removeFromQueue('b')
+    expect(await headOfQueue()).toBe('a')
   })
 
   afterAll(async () => {

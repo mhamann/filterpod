@@ -10,7 +10,6 @@ import { CutTimeline } from '@/ui/CutTimeline'
 import { Artwork, Pill } from '@/ui/components'
 import { Icon } from '@/ui/Icon'
 import { SkipIcon } from '@/ui/SkipIcon'
-import { UpNext } from '@/ui/UpNext'
 import { QueueButton } from '@/ui/QueueButton'
 import { timecode } from '@/ui/format'
 
@@ -174,7 +173,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
           Everything from the header down to the title dismisses on a downward drag. It is
           the top half of the panel and nothing in it needs to scroll under a finger, so
           it makes the gesture something you can do without aiming. Scrolling still works
-          from the controls and the queue below.
+          from the controls below.
         */}
         <div data-drag-zone style={{ touchAction: 'none' }}>
           <div className="mx-auto mt-6 w-full max-w-[300px]">
@@ -297,8 +296,6 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
             Playback failed. Try re-downloading this episode.
           </p>
         )}
-
-        <UpNext />
       </div>
     </div>
   )

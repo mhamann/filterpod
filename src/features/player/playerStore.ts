@@ -11,7 +11,8 @@ import {
   getProfileForPodcast,
   getProgress,
   getSettings,
-  dequeueNext,
+  enqueueEpisode,
+  headOfQueue,
   removeFromQueue,
   listWordOverrides,
   saveProgress,
@@ -162,10 +163,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       await enqueueDownload(episodeId)
     }
 
-    // Playing something takes it out of "up next", however it was reached — from the
-    // queue itself, from a list, or by the queue advancing. Otherwise the episode now
-    // playing sits in the queue waiting to be played again.
-    void removeFromQueue(episodeId)
+    // Playing something moves it to the front of the queue, pushing everything else
+    // down, so position 0 is always what is playing. That makes the queue a single
+    // ordered account of what is happening rather than a list that has to be read
+    // alongside a separate "and this is playing" — and it means whatever was playing
+    // before is still there, one place further down, rather than lost.
+    await enqueueEpisode(episodeId, { next: true })
 
     const startAtSec = progress?.positionSec ?? 0
     const url = audioPresent
@@ -484,11 +487,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
  *
  * The queue lives in storage rather than in this store, so it survives a restart the
  * same way the restored episode does — a queue that evaporated when the app was closed
- * would not be worth arranging. Taking the next item and removing it happen in one
- * transaction, so an episode cannot be played twice or skipped entirely.
+ * would not be worth arranging.
  */
 async function advanceQueue() {
-  const next = await dequeueNext()
+  // The episode that just finished is the head, so it comes off first; whatever is then
+  // at the front is the one to play.
+  const finished = usePlayerStore.getState().episode?.id
+  if (finished) await removeFromQueue(finished)
+
+  const next = await headOfQueue()
   if (!next) return
   await usePlayerStore.getState().open(next, true)
 }

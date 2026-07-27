@@ -320,16 +320,16 @@ export async function moveInQueue(episodeId: EpisodeId, delta: number): Promise<
   })
 }
 
-/** Takes the next episode off the queue, or undefined when it is empty. */
-export async function dequeueNext(): Promise<EpisodeId | undefined> {
-  return db.transaction('rw', db.queue, async () => {
-    const items = await db.queue.orderBy('position').toArray()
-    const next = items.shift()
-    if (!next) return undefined
-    await db.queue.delete(next.episodeId)
-    await renumber(items)
-    return next.episodeId
-  })
+/**
+ * The episode at the front of the queue.
+ *
+ * Position 0 is whatever is playing, not what plays next — pressing play moves an episode
+ * here and pushes the rest down. So advancing means dropping the head that just finished
+ * and reading this again, rather than popping something to play.
+ */
+export async function headOfQueue(): Promise<EpisodeId | undefined> {
+  const [first] = await db.queue.orderBy('position').limit(1).toArray()
+  return first?.episodeId
 }
 
 export async function clearQueue(): Promise<void> {

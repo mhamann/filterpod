@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
 import { HashRouter, NavLink, Route, Routes } from 'react-router-dom'
 import clsx from 'clsx'
-import { db } from '@/data/db'
 import { Icon, type IconName } from '@/ui/Icon'
 import { ProgressBar } from '@/ui/components'
 import { useModelStore } from '@/features/filter/modelStore'
@@ -20,7 +18,6 @@ import { usePlayerStore } from '@/features/player/playerStore'
 const TABS: Array<{ to: string; label: string; icon: IconName }> = [
   { to: '/', label: 'Library', icon: 'library' },
   { to: '/discover', label: 'Discover', icon: 'search' },
-  { to: '/queue', label: 'Queue', icon: 'queue' },
   { to: '/downloads', label: 'Downloads', icon: 'download' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ]
@@ -29,7 +26,6 @@ export function App() {
   const [ready, setReady] = useState(false)
   const [playerOpen, setPlayerOpen] = useState(false)
   const blockedReason = usePlayerStore((state) => state.blockedReason)
-  const queueCount = useLiveQuery(() => db.queue.count(), [], 0)
 
   useEffect(() => {
     void bootstrap().finally(() => setReady(true))
@@ -82,16 +78,7 @@ export function App() {
                   {isActive && (
                     <span className="absolute top-0 h-[2px] w-8 rounded-full bg-ember-500" />
                   )}
-                  <span className="relative">
-                    <Icon name={tab.icon} size={20} />
-                    {tab.to === '/queue' && queueCount > 0 && (
-                      // The queue is the one tab whose contents the user put there
-                      // deliberately, so it is worth saying how many without a visit.
-                      <span className="tabular absolute -top-1.5 -right-2.5 min-w-[15px] rounded-full bg-ember-500 px-1 text-[9px] leading-[15px] font-semibold text-panel-950">
-                        {queueCount}
-                      </span>
-                    )}
-                  </span>
+                  <Icon name={tab.icon} size={20} />
                   <span className="text-[10px] font-medium tracking-wide">{tab.label}</span>
                 </>
               )}
