@@ -230,6 +230,19 @@ class TranscriberPlugin : Plugin() {
                             "${(flat?.size ?: 0) / 3} words, " +
                             "heap ${Runtime.getRuntime().let { (it.totalMemory() - it.freeMemory()) / 1048576 }}MB",
                     )
+                    // The transcribed text itself, truncated. When a user reports "the word at
+                    // 24:45 played", this line is the difference between diagnosing a miss from
+                    // the log and rebuilding the whole scenario to find out what ASR heard.
+                    // Local logcat only; nothing leaves the device.
+                    if (flat != null) {
+                        val text = StringBuilder()
+                        var w = 0
+                        while (w + 2 < flat.size && text.length < 220) {
+                            text.append(flat[w].trim()).append(' ')
+                            w += 3
+                        }
+                        log("chunk ${startSec?.toInt()}s text: ${text.toString().trim()}")
+                    }
 
                     if (flat != null) {
                         // Flat triples: word, startMs, endMs.
