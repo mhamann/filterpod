@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import clsx from 'clsx'
 import { usePlayerStore } from '@/features/player/playerStore'
@@ -10,6 +11,7 @@ import { Artwork, Pill } from '@/ui/components'
 import { Icon } from '@/ui/Icon'
 import { SkipIcon } from '@/ui/SkipIcon'
 import { UpNext } from '@/ui/UpNext'
+import { QueueButton } from '@/ui/QueueButton'
 import { timecode } from '@/ui/format'
 
 const RATES = [0.8, 1, 1.2, 1.5, 1.75, 2]
@@ -54,6 +56,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
     setRate,
   } = usePlayerStore()
   const [showRates, setShowRates] = useState(false)
+  const navigate = useNavigate()
 
   const settings = useLiveQuery(() => db.settings.get('singleton'), [])
   const skipBackSec = settings?.skipBackSec ?? DEFAULT_SETTINGS.skipBackSec
@@ -83,8 +86,13 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
    */
   function onPointerDown(event: React.PointerEvent) {
     if (!open) return
-    if ((event.target as HTMLElement).closest('[data-no-drag]')) return
-    if ((scrollRef.current?.scrollTop ?? 0) > 0) return
+    const target = event.target as HTMLElement
+    if (target.closest('[data-no-drag]')) return
+    // Inside the drag zone the gesture is unambiguous, so the scroll position does not
+    // get a say; anywhere else a downward drag only belongs to the panel when there is
+    // nothing above to scroll back to.
+    const inDragZone = Boolean(target.closest('[data-drag-zone]'))
+    if (!inDragZone && (scrollRef.current?.scrollTop ?? 0) > 0) return
     dragFrom.current = event.clientY
   }
 
@@ -135,13 +143,21 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
         browser may claim mid-drag; at the top of a scrolled-to-top panel that works out,
         but this strip is the part people actually reach for and it should never miss.
       */}
-      <div style={{ touchAction: 'none' }}>
+      <div data-drag-zone style={{ touchAction: 'none' }}>
         <div className="rack-texture safe-top flex items-center justify-between border-b border-panel-800 px-4 py-3">
           <button onClick={onClose} className="focus-ring rounded-full p-2 text-ink-300">
             <Icon name="chevronDown" size={22} />
           </button>
           <span className="silkscreen">Now playing</span>
-          <div className="w-9" />
+          <QueueButton
+            onClick={() => {
+              // The panel is an overlay, so the queue would open behind it. Closing on
+              // the way there means the transition reads as going somewhere rather than
+              // as the screen changing underneath.
+              onClose()
+              navigate('/queue')
+            }}
+          />
         </div>
 
         {/* The grab affordance: says the panel can be pulled down before anyone tries. */}
@@ -154,17 +170,25 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
         ref={scrollRef}
         className="flex flex-1 flex-col overflow-y-auto overscroll-contain px-6 pb-8"
       >
-        <div className="mx-auto mt-6 w-full max-w-[300px]">
-          <Artwork
-            src={episode.artworkUrl ?? podcast?.artworkUrl}
-            alt={episode.title}
-            className="aspect-square w-full shadow-2xl shadow-black/60"
-          />
-        </div>
+        {/*
+          Everything from the header down to the title dismisses on a downward drag. It is
+          the top half of the panel and nothing in it needs to scroll under a finger, so
+          it makes the gesture something you can do without aiming. Scrolling still works
+          from the controls and the queue below.
+        */}
+        <div data-drag-zone style={{ touchAction: 'none' }}>
+          <div className="mx-auto mt-6 w-full max-w-[300px]">
+            <Artwork
+              src={episode.artworkUrl ?? podcast?.artworkUrl}
+              alt={episode.title}
+              className="aspect-square w-full shadow-2xl shadow-black/60"
+            />
+          </div>
 
-        <div className="mt-7 text-center">
-          <p className="silkscreen mb-2">{podcast?.title}</p>
-          <h1 className="text-balance text-xl leading-tight">{episode.title}</h1>
+          <div className="mt-7 text-center">
+            <p className="silkscreen mb-2">{podcast?.title}</p>
+            <h1 className="text-balance text-xl leading-tight">{episode.title}</h1>
+          </div>
         </div>
 
         {/* The cut readout — the app's core claim, stated plainly. */}

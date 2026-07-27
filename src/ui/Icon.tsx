@@ -38,9 +38,10 @@ interface IconProps {
   name: IconName
   size?: number
   className?: string
+  style?: React.CSSProperties
 }
 
-export function Icon({ name, size = 20, className }: IconProps) {
+export function Icon({ name, size = 20, className, style }: IconProps) {
   return (
     <svg
       width={size}
@@ -49,6 +50,7 @@ export function Icon({ name, size = 20, className }: IconProps) {
       fill="currentColor"
       aria-hidden="true"
       className={className}
+      style={style}
     >
       <path d={PATHS[name]} />
     </svg>
