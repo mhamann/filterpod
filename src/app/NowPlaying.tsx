@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import clsx from 'clsx'
 import { usePlayerStore } from '@/features/player/playerStore'
+import { chapterAt, getChapters } from '@/features/chapters/chapters'
+import type { Chapter } from '@/core/types'
 import { analyzedUntil, toFilteredPosition } from '@/core/filterMath'
 import { db } from '@/data/db'
 import { DEFAULT_SETTINGS } from '@/data/defaults'
@@ -56,6 +58,26 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
   } = usePlayerStore()
   const [showRates, setShowRates] = useState(false)
   const navigate = useNavigate()
+
+  /**
+   * Chapters, when the feed pointed at a chapters file. Loaded per episode rather than
+   * kept in the store: they are display data for this panel and nothing else reads them.
+   */
+  const [chapters, setChapters] = useState<Chapter[]>([])
+  useEffect(() => {
+    setChapters([])
+    if (!episode) return
+    let cancelled = false
+    void getChapters(episode).then((result) => {
+      if (!cancelled) setChapters(result)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Reloading on id, not on the object: the store replaces the episode reference on
+    // every status tick, and refetching chapters fifty times a second helps nobody.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [episode?.id])
 
   const settings = useLiveQuery(() => db.settings.get('singleton'), [])
   const skipBackSec = settings?.skipBackSec ?? DEFAULT_SETTINGS.skipBackSec
@@ -289,6 +311,45 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
               </button>
             ))}
           </div>
+        )}
+
+        {chapters.length > 0 && (
+          <section className="mt-8">
+            <p className="silkscreen mb-2">Chapters</p>
+            <ol className="overflow-hidden rounded-xl ring-1 ring-panel-800">
+              {chapters.map((chapter, index) => {
+                const isCurrent = chapterAt(chapters, positionSec) === chapter
+                return (
+                  <li key={chapter.startSec} className="border-b border-panel-800 last:border-b-0">
+                    <button
+                      onClick={() => void seek(chapter.startSec)}
+                      className={clsx(
+                        'focus-ring flex w-full items-center gap-3 px-3 py-2.5 text-left',
+                        isCurrent ? 'bg-ember-500/[0.07]' : 'bg-panel-900/60',
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          'tabular shrink-0 text-[11px]',
+                          isCurrent ? 'text-ember-400' : 'text-ink-600',
+                        )}
+                      >
+                        {timecode(chapter.startSec)}
+                      </span>
+                      <span
+                        className={clsx(
+                          'min-w-0 flex-1 truncate text-[13px]',
+                          isCurrent ? 'text-ember-300' : 'text-ink-300',
+                        )}
+                      >
+                        {chapter.title || `Chapter ${index + 1}`}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
+          </section>
         )}
 
         {state === 'error' && (

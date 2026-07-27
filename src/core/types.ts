@@ -55,6 +55,16 @@ export interface Episode {
   explicit: boolean
   artworkUrl?: string
   transcripts: TranscriptRef[]
+  /** Podcasting 2.0 `podcast:chapters` URL — a JSON file, fetched on demand. */
+  chaptersUrl?: string
+}
+
+/** One chapter marker, from a Podcasting 2.0 chapters file. */
+export interface Chapter {
+  startSec: number
+  title: string
+  /** Chapter-specific artwork, when the file provides one. */
+  imageUrl?: string
 }
 
 export interface Subscription {
