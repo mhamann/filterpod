@@ -75,7 +75,8 @@ export const DEFAULT_SETTINGS: Settings = {
  * Bumping either constant invalidates existing filter maps so they regenerate,
  * rather than silently serving results from an older model or wordlist.
  */
-// v2: abandoned coverage is no longer persisted as analyzed. Maps written by v1 can
-// carry stretches marked analyzed that were never examined, so they must regenerate.
-export const ENGINE_VERSION = '2'
+// v3: MP3 windows are byte-sliced from the Xing/Info map rather than extractor-seeked.
+// Maps written by v1 (persisted abandonment) or v2 (mis-seeking decoder) can both claim
+// coverage over audio that was never examined at the labeled position; regenerate all.
+export const ENGINE_VERSION = '3'
 export const WORDLIST_VERSION = '1'

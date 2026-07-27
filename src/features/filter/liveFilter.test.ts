@@ -344,6 +344,30 @@ describe('failure handling', () => {
     expect(errors).toContain('decode failed')
   })
 
+  it('abandons a chunk that hangs, instead of wedging the pipeline', async () => {
+    // A hung network read produces neither result nor error. The pump used to wait on
+    // it forever — no coverage updates, play refusing at the frontier, a frozen-looking
+    // app. The watchdog turns silence into an ordinary failure.
+    transcribe.mockImplementation(() => new Promise(() => {}))
+    let liveRanges: Array<{ startSec: number; endSec: number }> = []
+    const errors: string[] = []
+
+    await run({
+      ...baseOptions,
+      episode: episode({ durationSec: 60 }),
+      startAtSec: 0,
+      callbacks: {
+        onUpdate: (_spans, ranges) => { liveRanges = ranges },
+        onError: (m) => errors.push(m),
+      },
+    })
+    stopLiveFilter()
+
+    expect(errors.some((m) => m.includes('timed out'))).toBe(true)
+    // Abandoned in-session, so the playhead is free again.
+    expect(isAnalyzed(liveRanges, 1)).toBe(true)
+  })
+
   it('never persists an abandoned stretch as analyzed', async () => {
     // A mixed session: the middle chunk fails permanently, its neighbours succeed.
     transcribe.mockImplementation(async (req) => {
