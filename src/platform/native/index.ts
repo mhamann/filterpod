@@ -32,11 +32,23 @@ function createNativeHttp(): HttpPlatform {
         normalized[key.toLowerCase()] = String(value)
       }
 
+      /*
+       * CapacitorHttp parses JSON bodies itself whenever the server says
+       * `Content-Type: application/json`, and `responseType: 'text'` does not stop it —
+       * `data` arrives as an object, and String() would turn it into "[object Object]".
+       * The bug hid for a while because the iTunes endpoints declare `text/javascript`,
+       * which passes through as a string; Apple's charts endpoint declares JSON and was
+       * the first caller to hit it. Re-serialising costs a parse round-trip, but keeps
+       * this seam's contract ("text out") honest for every caller.
+       */
+      const body =
+        typeof response.data === 'string' ? response.data : JSON.stringify(response.data ?? '')
+
       return {
         status: response.status,
         headers: normalized,
-        text: async () => String(response.data ?? ''),
-        arrayBuffer: async () => new TextEncoder().encode(String(response.data ?? '')).buffer,
+        text: async () => body,
+        arrayBuffer: async () => new TextEncoder().encode(body).buffer,
       }
     },
   }
