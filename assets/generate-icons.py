@@ -102,7 +102,10 @@ def main():
     here = pathlib.Path(__file__).parent
     launch, store = build_launcher(), build_store()
     (here / 'icon-store.svg').write_text(wrap(store, 512))
-    (here / 'icon-foreground.svg').write_text(wrap(launch, 108, bg=None))
+    # The adaptive mask crops to a circle of roughly r33 on this 108 canvas, and the
+    # bare mark spans +-35 — the first build lost the mic's base to the mask. Scaled to
+    # sit inside r31, verified against a circle mask rather than a square preview.
+    (here / 'icon-foreground.svg').write_text(wrap(launch, 108, bg=None, scale=0.82))
     (here / 'icon-legacy.svg').write_text(wrap(launch, 512, scale=1.14))
     (here / 'icon-round.svg').write_text(
         wrap(launch, 512, scale=1.14).replace(
