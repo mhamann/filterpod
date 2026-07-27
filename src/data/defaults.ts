@@ -75,5 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
  * Bumping either constant invalidates existing filter maps so they regenerate,
  * rather than silently serving results from an older model or wordlist.
  */
-export const ENGINE_VERSION = '1'
+// v2: abandoned coverage is no longer persisted as analyzed. Maps written by v1 can
+// carry stretches marked analyzed that were never examined, so they must regenerate.
+export const ENGINE_VERSION = '2'
 export const WORDLIST_VERSION = '1'

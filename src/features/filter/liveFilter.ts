@@ -111,11 +111,21 @@ export interface LiveFilterCallbacks {
  * There has to be a limit, and abandoning has to mean *marking it analyzed*, because the
  * player treats unanalyzed audio as impassable. A stretch that can never be transcribed
  * and is never given up on pins the playhead in front of it forever: the episode simply
- * stops, permanently, with no way for the listener to get past it. That is a worse
- * failure than the alternative, which is that one abandoned stretch plays unfiltered —
- * so the give-up path reports an error rather than doing it silently.
+ * stops, permanently, with no way for the listener to get past it.
+ *
+ * But abandonment is a lie told to the playhead, and it must stay contained. The first
+ * shipped version retried twice with no delay — milliseconds apart, so one transient
+ * network hiccup failed both — and then persisted the abandoned stretch as analyzed.
+ * A real listener hit this: a streamed episode's flagged region was walled off as
+ * "clean" forever and a profanity played, silently. Hence three rules now: retries are
+ * spaced out so a transient has time to pass, the lie is never persisted (see
+ * [persist]), and giving up is logged loudly rather than tucked into a store field the
+ * UI may never show.
  */
-const MAX_CHUNK_ATTEMPTS = 2
+const MAX_CHUNK_ATTEMPTS = 3
+
+/** Wait between attempts at a failing chunk, multiplied by the attempt number. */
+const RETRY_BACKOFF_MS = 2_000
 
 interface Session {
   episode: Episode
@@ -137,6 +147,12 @@ interface Session {
   chunk: { startSec: number; endSec: number; controller: AbortController } | null
   /** Failed attempts per chunk start, so a bad stretch is retried but not forever. */
   attempts: Map<number, number>
+  /**
+   * Stretches given up on. Included in [ranges] so the playhead is not walled in, but
+   * subtracted before persisting — the next session must try them again rather than
+   * inherit this session's bad luck as permanent fact.
+   */
+  abandoned: AnalyzedRange[]
   callbacks: LiveFilterCallbacks
   durationSec: number
 }
@@ -194,7 +210,16 @@ export async function startLiveFilter(options: {
   }
 
   stopLiveFilter()
-  const existing = await getFilterMap(episode.id)
+  const stored = await getFilterMap(episode.id)
+  // A map from an older engine or wordlist is not a head start, it is a liability:
+  // v1 maps can claim coverage over audio that was never examined. Discard rather
+  // than inherit — coverage rebuilds while the episode plays anyway.
+  const existing =
+    stored &&
+    stored.engineVersion === ENGINE_VERSION &&
+    stored.wordlistVersion === WORDLIST_VERSION
+      ? stored
+      : undefined
 
   // Reuse work from a previous session; only the gaps need transcribing.
   const spans = existing?.status === 'failed' ? [] : (existing?.spans ?? [])
@@ -212,6 +237,7 @@ export async function startLiveFilter(options: {
     controller: new AbortController(),
     chunk: null,
     attempts: new Map(),
+    abandoned: [],
     callbacks: options.callbacks,
     durationSec: episode.durationSec ?? 0,
   }
@@ -413,7 +439,7 @@ async function transcribeNextChunk(session: Session): Promise<void> {
     // against this stretch — the audio was never examined, and saying otherwise would
     // let a few seeks mark a region analyzed that nobody ever looked at.
     if (controller.signal.aborted) return
-    abandonOrRetry(session, startSec, endSec, error)
+    await abandonOrRetry(session, startSec, endSec, error)
   } finally {
     session.controller.signal.removeEventListener('abort', abortChunk)
     if (session.chunk?.controller === controller) session.chunk = null
@@ -428,21 +454,44 @@ async function transcribeNextChunk(session: Session): Promise<void> {
  * for why giving up is the lesser evil; the error is reported either way so this is
  * never a silent hole in the filtering.
  */
-function abandonOrRetry(
+async function abandonOrRetry(
   session: Session,
   startSec: number,
   endSec: number,
   error: unknown,
-): void {
+): Promise<void> {
   const message = error instanceof Error ? error.message : String(error)
   const attempts = (session.attempts.get(startSec) ?? 0) + 1
   session.attempts.set(startSec, attempts)
   session.callbacks.onError(message)
 
-  if (attempts < MAX_CHUNK_ATTEMPTS) return
+  if (attempts < MAX_CHUNK_ATTEMPTS) {
+    // Spaced, not immediate. Back-to-back retries land inside the same transient —
+    // a network blip fails all of them in milliseconds and the stretch is lost.
+    await sleep(attempts * RETRY_BACKOFF_MS, session.controller.signal)
+    return
+  }
 
+  console.error(
+    `[filter] giving up on ${Math.round(startSec)}-${Math.round(endSec)}s after ` +
+      `${attempts} attempts (${message}); it will play unfiltered this session`,
+  )
+  session.abandoned = mergeRanges([...session.abandoned, { startSec, endSec }])
   session.ranges = mergeRanges([...session.ranges, { startSec, endSec }])
   session.callbacks.onUpdate(session.spans, session.ranges)
+}
+
+/** Abortable sleep, so stopping a session does not leave a retry timer running. */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms)
+    function done() {
+      signal.removeEventListener('abort', done)
+      clearTimeout(timer)
+      resolve()
+    }
+    signal.addEventListener('abort', done)
+  })
 }
 
 /**
@@ -527,12 +576,18 @@ async function persist(
   source: FilterMap['source'] = 'asr',
 ): Promise<void> {
   const existing = await db.filterMaps.get(session.episode.id)
+  // Abandoned stretches are excluded: they are a per-session concession to keep the
+  // playhead moving, not a fact about the audio. Persisting them once turned a single
+  // transient failure into a region that was never examined again.
+  const persistable = subtractRanges(session.ranges, session.abandoned)
   await putFilterMap({
     episodeId: session.episode.id,
     status,
     spans: session.spans,
-    analyzedRanges: session.ranges,
-    source: existing?.source === 'transcript-only' ? existing.source : source,
+    analyzedRanges: persistable,
+    // A source label describes how the map was produced; the first ASR chunk must not
+    // relabel a transcript-narrowed map as plain ASR.
+    source: existing?.source && existing.source !== 'asr' ? existing.source : source,
     engineVersion: ENGINE_VERSION,
     wordlistVersion: WORDLIST_VERSION,
     // Share of the episode actually examined, not how far the frontier has reached —

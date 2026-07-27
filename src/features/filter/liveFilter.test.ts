@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Episode, TimedWord } from '@/core/types'
 import { DEFAULT_PROFILES } from '@/data/defaults'
 import { analyzedUntil, isAnalyzed } from '@/core/filterMath'
@@ -274,12 +274,27 @@ describe('seeking', () => {
  * would ever come back and fill.
  */
 describe('failure handling', () => {
+  // Retries sleep between attempts, so these tests drive the clock by hand.
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Runs a startLiveFilter call to completion under fake timers. */
+  async function run(options: Parameters<typeof startLiveFilter>[0]) {
+    const promise = startLiveFilter(options)
+    await vi.runAllTimersAsync()
+    return promise
+  }
+
   it('retries a failed chunk rather than leaving a hole behind it', async () => {
     transcribe.mockRejectedValueOnce(new Error('decode failed'))
     transcribe.mockResolvedValue([])
     const errors: string[] = []
 
-    await startLiveFilter({
+    await run({
       ...baseOptions,
       episode: episode(),
       startAtSec: 0,
@@ -298,7 +313,7 @@ describe('failure handling', () => {
     transcribe.mockRejectedValueOnce(new Error('decode failed'))
     transcribe.mockResolvedValue([])
 
-    const { ranges } = await startLiveFilter({
+    const { ranges } = await run({
       ...baseOptions,
       episode: episode({ durationSec: 120 }),
       startAtSec: 0,
@@ -316,7 +331,7 @@ describe('failure handling', () => {
     transcribe.mockRejectedValue(new Error('decode failed'))
     const errors: string[] = []
 
-    const { ranges } = await startLiveFilter({
+    const { ranges } = await run({
       ...baseOptions,
       episode: episode({ durationSec: 120 }),
       startAtSec: 0,
@@ -327,6 +342,39 @@ describe('failure handling', () => {
     // Abandoned, so the playhead can move — but never silently.
     expect(isAnalyzed(ranges, 1)).toBe(true)
     expect(errors).toContain('decode failed')
+  })
+
+  it('never persists an abandoned stretch as analyzed', async () => {
+    // A mixed session: the middle chunk fails permanently, its neighbours succeed.
+    transcribe.mockImplementation(async (req) => {
+      if (req.windows![0].startSec === 15) throw new Error('decode failed')
+      return []
+    })
+
+    // The abandonment happens in the background pump, after the lead-in resolves, so
+    // the live update stream is where its effect is visible.
+    let liveRanges: Array<{ startSec: number; endSec: number }> = []
+    await run({
+      ...baseOptions,
+      episode: episode({ durationSec: 120 }),
+      startAtSec: 0,
+      callbacks: { onUpdate: (_spans, ranges) => { liveRanges = ranges }, onError: () => {} },
+    })
+    stopLiveFilter()
+
+    // In-session the abandoned stretch counts as analyzed, or the episode stops dead —
+    expect(isAnalyzed(liveRanges, 20)).toBe(true)
+
+    // — but what was written to storage must not contain it. Persisting the lie is
+    // how one transient network failure became a region that was never examined
+    // again, and played a profanity to a real listener.
+    const persisted = putFilterMap.mock.calls.map((call) => (call as unknown[])[0] as {
+      analyzedRanges: Array<{ startSec: number; endSec: number }>
+    })
+    expect(persisted.length).toBeGreaterThan(0)
+    const last = persisted.at(-1)!
+    expect(isAnalyzed(last.analyzedRanges, 5)).toBe(true)   // real work is kept
+    expect(isAnalyzed(last.analyzedRanges, 20)).toBe(false) // the lie is not
   })
 })
 
