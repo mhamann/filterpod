@@ -2,7 +2,7 @@
   "name": "filterpod",
   "private": true,
   "version": "0.0.0",
-  "description": "A podcast player that skips foul language, entirely on-device.",
+  "description": "A podcast player that filters coarse language, entirely on-device.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",

@@ -1,8 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108">
-  <rect width="108" height="108" fill="#0b0d0c"/>
-  <rect x="19.50" y="43.00" width="9.00" height="22.00" rx="4.50" fill="#ff8c2b"/>
-  <rect x="34.50" y="31.00" width="9.00" height="46.00" rx="4.50" fill="#ff8c2b"/>
-  <rect x="49.50" y="51.00" width="9.00" height="6.00" rx="3.00" fill="#ff8c2b"/>
-  <rect x="64.50" y="34.00" width="9.00" height="40.00" rx="4.50" fill="#ff8c2b"/>
-  <rect x="79.50" y="40.00" width="9.00" height="28.00" rx="4.50" fill="#ff8c2b"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108">
+  <rect width="108" height="108" rx="0" fill="#0d0908"/>
+  <g transform="translate(54 54) scale(1.0) translate(-54 -54)">
+  <rect x="30.75" y="28.00" width="6.50" height="14.00" rx="3.25" fill="#a89684"/>
+  <rect x="40.75" y="22.00" width="6.50" height="26.00" rx="3.25" fill="#a89684"/>
+  <rect x="50.75" y="30.50" width="6.50" height="9.00" rx="3.25" fill="#a89684"/>
+  <rect x="60.75" y="24.50" width="6.50" height="21.00" rx="3.25" fill="#a89684"/>
+  <rect x="70.75" y="29.00" width="6.50" height="12.00" rx="3.25" fill="#a89684"/>
+  <path d="M25 45 h58 l-11.5 22 a6 6 0 0 1 -5 2.8 h-19 a6 6 0 0 1 -5 -2.8 z" fill="#cf8842"/>
+  <rect x="42.25" y="75.00" width="6.50" height="13.00" rx="3.25" fill="#f0cea3"/>
+  <rect x="50.75" y="75.00" width="6.50" height="13.00" rx="3.25" fill="#f0cea3"/>
+  <rect x="59.25" y="75.00" width="6.50" height="13.00" rx="3.25" fill="#f0cea3"/>
+  </g>
 </svg>
