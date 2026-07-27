@@ -15,7 +15,7 @@ import { Icon } from './Icon'
  * Buttons cost a tap but never do the wrong thing, and they work for anyone driving the
  * app by assistive technology.
  */
-export function UpNext() {
+export function UpNext({ showHeading = true }: { showHeading?: boolean } = {}) {
   const items = useLiveQuery(async () => {
     const queued = await db.queue.orderBy('position').toArray()
     const episodes = await db.episodes.bulkGet(queued.map((item) => item.episodeId))
@@ -33,16 +33,18 @@ export function UpNext() {
   if (!items || items.length === 0) return null
 
   return (
-    <section className="mt-10">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="silkscreen">Up next · {items.length}</h2>
-        <button
-          onClick={() => void clearQueue()}
-          className="focus-ring rounded-full px-2 py-1 text-[11px] text-ink-600"
-        >
-          Clear
-        </button>
-      </div>
+    <section className={showHeading ? 'mt-10' : ''}>
+      {showHeading && (
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="silkscreen">Up next · {items.length}</h2>
+          <button
+            onClick={() => void clearQueue()}
+            className="focus-ring rounded-full px-2 py-1 text-[11px] text-ink-600"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <ol className="overflow-hidden rounded-xl ring-1 ring-panel-800">
         {items.map(({ item, episode }, index) => (
