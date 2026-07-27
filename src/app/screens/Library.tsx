@@ -1,8 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/data/db'
-import { Artwork, Button, EmptyState, FilterStatus, SectionLabel } from '@/ui/components'
-import { EpisodeRow } from '@/ui/EpisodeRow'
+import { Artwork, Button, EmptyState, SectionLabel } from '@/ui/components'
 import { timecode } from '@/ui/format'
 import { refreshAndAutoDownload } from '@/features/subscriptions/service'
 import { PullToRefresh } from '@/ui/PullToRefresh'
@@ -10,7 +9,15 @@ import { QueueButton } from '@/ui/QueueButton'
 import { usePlayerStore } from '@/features/player/playerStore'
 import { Icon } from '@/ui/Icon'
 
-/** Home: what is ready to play, and what you subscribe to. */
+/**
+ * Home: pick up where you left off, or pick a show. Nothing else.
+ *
+ * This screen used to also carry a "Ready to play" list of every downloaded episode,
+ * with per-row download, queue and filter chrome. Three sections competing meant none
+ * of them read as the point — and that list was the Downloads tab wearing a different
+ * label. Episode browsing belongs to the show page; this page is for resuming and for
+ * choosing a show.
+ */
 export function Library() {
   const navigate = useNavigate()
 
@@ -26,36 +33,11 @@ export function Library() {
     [],
   )
 
-  /**
-   * Ready-to-play episodes: downloaded and unfinished.
-   *
-   * Downloaded is the bar now, not filtered — filtering starts when you press play, so
-   * gating this on a completed filter map would leave the section permanently empty.
-   */
-  const readyEpisodes = useLiveQuery(
-    async () => {
-      const downloads = await db.downloads.where('state').equals('downloaded').toArray()
-      if (downloads.length === 0) return []
-      const ids = downloads.map((download) => download.episodeId)
-      const [episodes, progress] = await Promise.all([
-        db.episodes.bulkGet(ids),
-        db.progress.bulkGet(ids),
-      ])
-      return episodes
-        .map((episode, index) => ({ episode, played: progress[index]?.played ?? false }))
-        .filter((row) => row.episode && !row.played)
-        .map((row) => row.episode!)
-        .sort((a, b) => b.publishedAt - a.publishedAt)
-        .slice(0, 30)
-    },
-    [],
-    [],
-  )
 
   const inProgress = useLiveQuery(
     async () => {
       const rows = await db.progress.orderBy('lastPlayedAt').reverse().limit(30).toArray()
-      const unfinished = rows.filter((row) => !row.played && row.positionSec > 5).slice(0, 5)
+      const unfinished = rows.filter((row) => !row.played && row.positionSec > 5)
       const episodes = await db.episodes.bulkGet(unfinished.map((row) => row.episodeId))
       return unfinished
         .map((row, index) => ({ row, episode: episodes[index] }))
@@ -64,6 +46,13 @@ export function Library() {
     [],
     [],
   )
+
+  // The mini player already shows what is loaded; repeating it here as the top
+  // "Continue" card made the same episode appear twice on one screen.
+  const currentId = usePlayerStore((state) => state.episode?.id)
+  const continueRows = inProgress
+    .filter(({ row }) => row.episodeId !== currentId)
+    .slice(0, 2)
 
   const hasNothing = subscriptions.length === 0
 
@@ -76,7 +65,7 @@ export function Library() {
         <EmptyState
           icon="library"
           title="Nothing here yet"
-          body="Find a show and FilterPod will download it, listen through it, and cut the language before you hear it."
+          body="Find a show and FilterPod will cut the language before you hear it."
           action={
             <Link to="/discover">
               <Button variant="primary" icon="search">
@@ -87,11 +76,11 @@ export function Library() {
         />
       ) : (
         <>
-          {inProgress.length > 0 && (
+          {continueRows.length > 0 && (
             <section className="px-4 pt-2 pb-5">
               <SectionLabel>Continue</SectionLabel>
               <div className="space-y-2">
-                {inProgress.map(({ row, episode }) => (
+                {continueRows.map(({ row, episode }) => (
                   <ContinueCard
                     key={row.episodeId}
                     episodeId={row.episodeId}
@@ -104,9 +93,7 @@ export function Library() {
           )}
 
           <section className="px-4 pb-5">
-            <SectionLabel>
-              Shows · {subscriptions.length}
-            </SectionLabel>
+            <SectionLabel>Shows</SectionLabel>
             <div className="grid grid-cols-3 gap-3">
               {subscriptions.map((podcast) => (
                 <Link
@@ -127,23 +114,6 @@ export function Library() {
             </div>
           </section>
 
-          <section>
-            <div className="px-4">
-              <SectionLabel>Ready to play</SectionLabel>
-            </div>
-            {readyEpisodes.length === 0 ? (
-              <p className="px-4 pb-4 text-sm text-ink-600">
-                Nothing downloaded yet. Episodes appear here once they finish downloading —
-                filtering starts when you press play.
-              </p>
-            ) : (
-              <div className="border-t border-panel-800">
-                {readyEpisodes.map((episode) => (
-                  <EpisodeRow key={episode.id} episode={episode} />
-                ))}
-              </div>
-            )}
-          </section>
         </>
       )}
       </div>
@@ -160,7 +130,6 @@ function ContinueCard({
   title: string
   remainingSec: number
 }) {
-  const filterMap = useLiveQuery(() => db.filterMaps.get(episodeId), [episodeId])
   return (
     <button
       onClick={() => void usePlayerStore.getState().open(episodeId)}
@@ -175,7 +144,6 @@ function ContinueCard({
           {timecode(remainingSec)} left
         </span>
       </span>
-      <FilterStatus map={filterMap} compact />
     </button>
   )
 }
