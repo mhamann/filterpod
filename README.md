@@ -1,7 +1,13 @@
 # FilterPod
 
-A podcast player that automatically skips foul language. Everything runs on your device —
+**Coarse language, filtered out.**
+
+A podcast player that skips swearing before you hear it. Everything runs on your device —
 there is no server, and no audio, transcript or listening history ever leaves the phone.
+
+The name is the whole idea: coarse goes in, the filter does its work, and what pours out
+is clean. "Coarse" is also what you call a grind that has not been through a filter yet,
+which is the joke and the product description at the same time.
 
 ## Why
 

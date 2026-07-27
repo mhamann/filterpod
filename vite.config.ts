@@ -81,9 +81,9 @@ export default defineConfig({
       manifest: {
         name: 'FilterPod',
         short_name: 'FilterPod',
-        description: 'A podcast player that automatically filters foul language.',
-        theme_color: '#0b0d12',
-        background_color: '#0b0d12',
+        description: 'Coarse language, filtered out. Podcasts brewed clean, on your device.',
+        theme_color: '#0d0908',
+        background_color: '#0d0908',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

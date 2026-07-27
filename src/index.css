@@ -14,33 +14,34 @@
  */
 
 @theme {
-  /* Panel — near-black with a green cast, like anodized rack metal. */
-  --color-panel-950: #0b0d0c;
-  --color-panel-900: #111413;
-  --color-panel-850: #171b19;
-  --color-panel-800: #1e2321;
-  --color-panel-700: #2a302d;
-  --color-panel-600: #3a423e;
+  /* Panel — dark roast. Warm near-black, going to roasted bean at the light end. */
+  --color-panel-950: #0d0908;
+  --color-panel-900: #15100d;
+  --color-panel-850: #1d1713;
+  --color-panel-800: #261e18;
+  --color-panel-700: #362a21;
+  --color-panel-600: #4a3a2d;
 
-  /* Ember — VU-meter backlight. The one loud colour, used sparingly. */
-  --color-ember-300: #ffc98a;
-  --color-ember-400: #ffab52;
-  --color-ember-500: #ff8c2b;
-  --color-ember-600: #e56f13;
+  /* Crema — the one warm colour, used sparingly. Token still named ember. */
+  --color-ember-300: #f0cea3;
+  --color-ember-400: #dfaa70;
+  --color-ember-500: #cf8842;
+  --color-ember-600: #ab6728;
 
-  /* Sage — "clean", "ready", "filtered". */
-  --color-sage-300: #a8d5b5;
-  --color-sage-400: #7cbd90;
-  --color-sage-500: #55a06d;
+  /* Sage — "clean", "ready", "filtered". Warmed toward olive to sit on brown. */
+  --color-sage-300: #bfd6ae;
+  --color-sage-400: #96ba82;
+  --color-sage-500: #729a61;
 
   /* Signal red, for failures only. */
-  --color-alarm-400: #ff6b5a;
-  --color-alarm-500: #e14b38;
+  --color-alarm-400: #ef6d59;
+  --color-alarm-500: #d24b36;
 
-  --color-ink-100: #f4f2ee;
-  --color-ink-300: #c6c3bc;
-  --color-ink-500: #8e8b84;
-  --color-ink-600: #6b6862;
+  /* Ink — cream, not white. Pure white on brown reads cold. */
+  --color-ink-100: #f7f1e8;
+  --color-ink-300: #d2c7b8;
+  --color-ink-500: #998d7e;
+  --color-ink-600: #73675b;
 
   --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, sans-serif;
   --font-sans: 'Familjen Grotesk Variable', ui-sans-serif, sans-serif;
@@ -125,7 +126,7 @@
     letter-spacing: -0.03em;
   }
 
-  /* The etched label above a control, like silkscreen on a front panel. */
+  /* The small stencilled label above a control, like type on a coffee bag. */
   .silkscreen {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -154,8 +155,8 @@
 
   .glow-ember {
     box-shadow:
-      0 0 0 1px rgb(255 140 43 / 0.35),
-      0 6px 26px -6px rgb(255 140 43 / 0.45);
+      0 0 0 1px rgb(207 136 66 / 0.35),
+      0 6px 26px -6px rgb(207 136 66 / 0.45);
   }
 
   .focus-ring:focus-visible {
