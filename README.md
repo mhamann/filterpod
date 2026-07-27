@@ -131,12 +131,29 @@ Every `LOAD` segment must show alignment `0x4000`.
 
 You can add your own words to cut, or exempt words from the built-in list, in Settings.
 
+## Contributing
+
+Bug reports are welcome, and a filtering miss reported with an episode and a timestamp is
+worth more than most patches — see [CONTRIBUTING.md](CONTRIBUTING.md), which also covers
+the few invariants the codebase will not bend on.
+
 ## License
 
 [GNU AGPL v3](LICENSE). Copyleft, including over a network: if you run a modified version
 where people can reach it, they are entitled to its source. That is the point — a filter
 you cannot inspect is a filter you are taking on trust, and this one decides what you do
 and do not get to hear.
+
+Copyright is held by Michael Hamann, and contributors are asked to sign a
+[CLA](CLA.md) granting the right to relicense. Stated plainly, because it should not be
+a surprise: **this project may also be released under other terms in future, including a
+proprietary build.** The reason is specific rather than commercial ambition — Apple's App
+Store terms are incompatible with the AGPL, so an iOS release is impossible without it.
+Contributors keep copyright in their own work and can do whatever they like with it; what
+the CLA grants is permission for the project to do the same.
+
+The AGPL release is not going anywhere. Relicensing adds a way to ship; it does not take
+this one away.
 
 ## Layout
 
