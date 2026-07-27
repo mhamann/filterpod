@@ -1,17 +1,18 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/data/db'
 import { Artwork, Button, EmptyState, FilterStatus, SectionLabel } from '@/ui/components'
 import { EpisodeRow } from '@/ui/EpisodeRow'
 import { timecode } from '@/ui/format'
 import { refreshAndAutoDownload } from '@/features/subscriptions/service'
+import { PullToRefresh } from '@/ui/PullToRefresh'
+import { QueueButton } from '@/ui/QueueButton'
 import { usePlayerStore } from '@/features/player/playerStore'
-import { useState } from 'react'
 import { Icon } from '@/ui/Icon'
 
 /** Home: what is ready to play, and what you subscribe to. */
 export function Library() {
-  const [refreshing, setRefreshing] = useState(false)
+  const navigate = useNavigate()
 
   const subscriptions = useLiveQuery(
     async () => {
@@ -67,27 +68,9 @@ export function Library() {
   const hasNothing = subscriptions.length === 0
 
   return (
-    <div className="animate-rise pb-6">
-      <Header
-        title="Library"
-        action={
-          <button
-            aria-label="Refresh feeds"
-            onClick={async () => {
-              setRefreshing(true)
-              try {
-                await refreshAndAutoDownload()
-              } finally {
-                setRefreshing(false)
-              }
-            }}
-            className="focus-ring rounded-full p-2 text-ink-500 disabled:opacity-40"
-            disabled={refreshing}
-          >
-            <Icon name="refresh" size={19} className={refreshing ? 'animate-spin' : ''} />
-          </button>
-        }
-      />
+    <PullToRefresh onRefresh={async () => void (await refreshAndAutoDownload())}>
+      <div className="animate-rise pb-6">
+        <Header title="Library" action={<QueueButton onClick={() => navigate('/queue')} />} />
 
       {hasNothing ? (
         <EmptyState
@@ -163,7 +146,8 @@ export function Library() {
           </section>
         </>
       )}
-    </div>
+      </div>
+    </PullToRefresh>
   )
 }
 
