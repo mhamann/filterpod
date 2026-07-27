@@ -32,10 +32,16 @@ obvious design — transcribe every episode as it finishes downloading — is wr
 phone: it pins the CPU for episodes that may never be played, and a few auto-downloads
 turn into sustained heat and battery drain.
 
-So filtering is driven by the playhead. Pressing play analyzes a short lead-in
-(~90s, a few seconds of work), starts playback, and then keeps transcribing ahead of the
-playhead while the audio plays, stopping once it is comfortably in front. Nothing is
-transcribed for an episode nobody plays, and time-to-play is seconds rather than minutes.
+So filtering is driven by the playhead. Pressing play analyzes a short lead-in, starts
+playback, and then keeps transcribing ahead of the playhead while the audio plays,
+stopping once it is comfortably in front. Nothing is transcribed for an episode nobody
+plays, and time-to-play is seconds rather than minutes.
+
+The lead-in is a **latency budget, not an accuracy one**: ~15s of audio, which is three or
+four seconds of work. It was 90s originally, which cost about thirty — and since a seek
+re-targets the pipeline and pays the same cost again, every jump felt like a hang. Chunk
+size scales with the cushion in hand: small when someone is waiting on the result, full
+size once playback is comfortably buffered and no single result is holding anything up.
 
 This only works because of one invariant, enforced in the player:
 
@@ -47,12 +53,35 @@ incomplete (`status: 'partial'`). If playback ever reaches the frontier — a sl
 a hard seek, 3× speed — the player pauses and says so rather than playing unchecked
 audio. Seeking re-points the pipeline at the new position.
 
+Coverage is also **derived from the playhead rather than carried alongside it**. An
+independently advanced cursor could drift: a chunk that failed pushed it past the gap it
+had just left, coverage then grew from the cursor, and the playhead stayed pinned in front
+of a hole nothing would ever come back to fill — the episode stopping dead while the
+pipeline busily transcribed audio nobody could reach. Deriving the next chunk from the
+frontier ahead of the listener means the first thing transcribed is always the audio
+immediately in front of them, and old holes heal on approach.
+
 There is deliberately **no "process in advance" option**. It looks like it would be
-useful for going offline, but it is not: downloaded episodes are already local and
-transcription runs on-device, so live filtering works with no connection at all. The only
-thing filtering ever needs the network for is fetching the speech model once, so
-*that* — not pre-processed episodes — is what "ready for offline" actually means, and
-Settings exposes it directly.
+useful for going offline, but it is not: a downloaded episode is local and transcription
+runs on-device, so live filtering works with no connection at all. The only thing
+filtering ever needs the network for is fetching the speech model once, so *that* — not
+pre-processed episodes — is what "ready for offline" actually means, and Settings exposes
+it directly.
+
+**Streaming and transcription share one fetch.** Downloading is how an episode is kept for
+offline, not a precondition for playing it. The naive way to support that costs every
+episode twice — the player streams from the network while a second fetch pulls the file to
+disk so there is something to decode. Instead both read through one Media3 `SimpleCache`:
+the player via `CacheDataSource`, the decoder via a `MediaDataSource` over the same cache.
+Whichever asks for a byte first fetches it; the other reads it from disk. A local proxy
+would have achieved the same with a socket and a Range parser of our own; `CacheDataSource`
+already is that proxy.
+
+That also removes what made streaming unsafe to filter. A read that misses blocks and
+fetches, so a chunk cannot fail merely because its audio has not arrived — failure keeps
+meaning failure, which matters because the pipeline gives up on a stretch that fails
+repeatedly and marks it analyzed. Walling the playhead in behind an untranscribable
+stretch is the worse of the two failures, but it has to be a real one.
 
 **CORS is a real constraint in the browser, not on device.** Podcast CDNs do not send
 `Access-Control-Allow-Origin`. On Android, Capacitor's native HTTP bridge bypasses CORS
@@ -198,11 +227,18 @@ Dexie/IndexedDB, one store per concern:
 - `progress` — position, played/unplayed, completion, last-played timestamp
 - `downloads` — local file handle, byte progress, state
 - `filterMaps` — the skip spans per episode, plus the engine/model version that produced them
+- `queue` — play order, densely numbered; position 0 is whatever is playing
 - `settings` — global filter profile, playback defaults, storage policy
 - `wordlist` — bundled tiered list plus user allow/block overrides
 
 `filterMaps` records carry the producing model + wordlist version, so bumping either can
 invalidate and regenerate maps rather than silently serving stale filtering.
+
+The `queue` holds the playing episode at position 0 rather than starting at what plays
+next, so it is one ordered account of what is happening instead of a list that has to be
+read alongside a separate "and this is playing". Positions are dense and rewritten on
+every change: the queue is a handful of episodes ordered by hand, so renumbering costs
+nothing and avoids the fractional drift gap-based schemes decay into.
 
 ## Discovery without a server
 
@@ -217,14 +253,3 @@ and OPML import cover everything search misses.
 React 19 · TypeScript · Vite · Tailwind v4 · Dexie · Zustand · fast-xml-parser ·
 Capacitor 8 · Media3/ExoPlayer · whisper.cpp
 
-## Build phases
-
-1. Scaffold and platform abstraction
-2. Data model and repositories
-3. Feed layer — search, RSS parsing, subscription lifecycle
-4. Player — resume, progress, queue
-5. Downloads and offline
-6. Filter engine — wordlist, matcher, filter maps
-7. On-device transcription — web then native
-8. Android native plugins — Media3 player, downloader, whisper JNI
-9. UI

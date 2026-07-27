@@ -13,6 +13,9 @@ import { Header } from './Library'
 import { Toggle } from './PodcastDetail'
 import type { Settings as SettingsType } from '@/core/types'
 
+/** Where the source lives, offered from inside the app — see the About group. */
+const SOURCE_URL = 'https://github.com/mhamann/filterpod'
+
 /**
  * Deliberately worded without examples.
  *
@@ -175,6 +178,25 @@ export function Settings() {
               Android app for background playback.
             </p>
           )}
+
+          {/*
+            Not decoration. FilterPod is under the AGPL, whose §13 entitles anyone using a
+            modified version over a network to its source — and the browser build is
+            exactly that case. Linking it from inside the app is the honest way to offer
+            it, and it is the right thing to show regardless: an app that decides what you
+            are allowed to hear should be one you can go and read.
+          */}
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[13px] text-ink-300">Source</span>
+            <a
+              href={SOURCE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="focus-ring rounded-full text-[12px] text-ember-400 underline underline-offset-2"
+            >
+              AGPL v3 · GitHub
+            </a>
+          </div>
         </div>
       </Group>
     </div>
