@@ -153,6 +153,40 @@ export async function matchShow(show: SpotifyShow): Promise<ShowMatch> {
   }
 }
 
+/**
+ * Saved shows out of a Spotify data export — the no-API path.
+ *
+ * Spotify now requires a Premium account just to register an API app, which walls the
+ * OAuth path off from most people. But every account, free included, can request its
+ * data from the privacy page, and the standard package's YourLibrary.json lists saved
+ * shows with name and publisher — the exact input the matcher needs. Slower (the export
+ * takes a day or two to arrive) but universal, and no tokens are involved at all.
+ *
+ * Accepts the zip as downloaded, or a bare YourLibrary.json for anyone who unzipped.
+ */
+export async function parseSpotifyExport(file: File): Promise<SpotifyShow[]> {
+  let json: string
+  if (/\.zip$/i.test(file.name)) {
+    const { default: JSZip } = await import('jszip')
+    const zip = await JSZip.loadAsync(await file.arrayBuffer())
+    const entry = Object.keys(zip.files).find((name) => /YourLibrary\.json$/i.test(name))
+    if (!entry) {
+      throw new Error(
+        'no YourLibrary.json in that zip — request the "Account data" export from Spotify',
+      )
+    }
+    json = await zip.files[entry].async('string')
+  } else {
+    json = await file.text()
+  }
+
+  const body = JSON.parse(json) as { shows?: Array<{ name?: string; publisher?: string }> }
+  if (!Array.isArray(body.shows)) throw new Error('no saved shows found in that file')
+  return body.shows
+    .filter((show): show is { name: string; publisher?: string } => Boolean(show?.name))
+    .map((show) => ({ name: show.name, publisher: show.publisher ?? '' }))
+}
+
 // getPlatform is unused today but keeps this module on the platform seam if the token
 // exchange ever needs to route through native HTTP (Spotify's endpoints are CORS-open,
 // so plain fetch works in both the WebView and the browser).

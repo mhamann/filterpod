@@ -10,6 +10,7 @@ import {
   completeAuth,
   fetchSavedShows,
   matchShow,
+  parseSpotifyExport,
   spotifyConfigured,
   type ShowMatch,
 } from '@/features/import/spotify'
@@ -41,6 +42,7 @@ export function ImportScreen() {
   const [unmatched, setUnmatched] = useState<ShowMatch[]>([])
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const spotifyFileRef = useRef<HTMLInputElement>(null)
 
   const redirectUri =
     getPlatform().name === 'android' ? SPOTIFY_REDIRECT_NATIVE : SPOTIFY_REDIRECT_WEB
@@ -62,20 +64,35 @@ export function ImportScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  async function matchAndQueue(shows: Awaited<ReturnType<typeof fetchSavedShows>>) {
+    const matches: ShowMatch[] = []
+    for (const show of shows) matches.push(await matchShow(show))
+    setUnmatched(matches.filter((match) => !match.feedUrl))
+    queueFeeds(
+      matches
+        .filter((match): match is ShowMatch & { feedUrl: string } => Boolean(match.feedUrl))
+        .map((match) => ({ title: match.matchedTitle ?? match.show.name, feedUrl: match.feedUrl })),
+    )
+  }
+
   async function handleSpotifyCode(code: string) {
     setSpotifyBusy(true)
     setError(null)
     try {
       const token = await completeAuth(code, redirectUri)
-      const shows = await fetchSavedShows(token)
-      const matches: ShowMatch[] = []
-      for (const show of shows) matches.push(await matchShow(show))
-      setUnmatched(matches.filter((match) => !match.feedUrl))
-      queueFeeds(
-        matches
-          .filter((match): match is ShowMatch & { feedUrl: string } => Boolean(match.feedUrl))
-          .map((match) => ({ title: match.matchedTitle ?? match.show.name, feedUrl: match.feedUrl })),
-      )
+      await matchAndQueue(await fetchSavedShows(token))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setSpotifyBusy(false)
+    }
+  }
+
+  async function onSpotifyExportPicked(file: File) {
+    setSpotifyBusy(true)
+    setError(null)
+    try {
+      await matchAndQueue(await parseSpotifyExport(file))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     } finally {
@@ -172,31 +189,46 @@ export function ImportScreen() {
           </span>
           <SectionLabel>From Spotify</SectionLabel>
         </div>
-        {spotifyConfigured() ? (
-          <>
-            <p className="mb-3 text-[13px] leading-relaxed text-ink-500">
-              Signs into Spotify (read-only) to fetch your saved shows, then finds each
-              one&apos;s real podcast feed. Shows without a clean match are listed rather
-              than guessed at — a wrong guess would subscribe you to the wrong podcast.
-            </p>
+        <p className="mb-3 text-[13px] leading-relaxed text-ink-500">
+          Request your data from Spotify (Account, then Privacy, then &ldquo;Download your
+          data&rdquo;) — the file arrives by email in a day or two. Open it here and each
+          saved show is matched to its real podcast feed. Shows without a clean match are
+          listed rather than guessed at, since a wrong guess would subscribe you to the
+          wrong podcast.
+        </p>
+        <input
+          ref={spotifyFileRef}
+          type="file"
+          accept=".zip,.json,application/zip,application/json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) void onSpotifyExportPicked(file)
+            event.target.value = ''
+          }}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            icon="plus"
+            disabled={spotifyBusy}
+            onClick={() => spotifyFileRef.current?.click()}
+          >
+            {spotifyBusy ? 'Matching shows…' : 'Open data export'}
+          </Button>
+          {spotifyConfigured() && (
             <Button
-              variant="primary"
+              variant="secondary"
               icon="search"
               disabled={spotifyBusy}
               onClick={async () => {
                 location.href = await beginAuth(redirectUri)
               }}
             >
-              {spotifyBusy ? 'Fetching your shows…' : 'Connect Spotify'}
+              Connect Spotify
             </Button>
-          </>
-        ) : (
-          <p className="text-[13px] leading-relaxed text-ink-600">
-            Not configured in this build. Spotify import needs a free API registration by
-            the app&apos;s maintainer (a client ID at developer.spotify.com); once it is
-            added, a Connect button appears here.
-          </p>
-        )}
+          )}
+        </div>
       </section>
 
       {error && (
