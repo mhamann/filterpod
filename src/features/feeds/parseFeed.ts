@@ -70,16 +70,36 @@ function parseExplicit(raw: string): boolean {
   return value === 'yes' || value === 'true' || value === 'explicit'
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  ndash: '\u2013', mdash: '\u2014', hellip: '\u2026',
+  lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d',
+}
+
+/**
+ * Decodes HTML entities that survive XML parsing.
+ *
+ * They survive two ways, both rampant in podcast feeds: publishers double-encode
+ * (`&amp;#39;` in the XML decodes to the literal text `&#39;`), and text inside CDATA is
+ * exempt from XML entity rules entirely, so `&apos;` arrives verbatim. A real feed
+ * showed "The King&#39;s Chapel" as its title because of the first. The XML parser is
+ * behaving correctly in both cases — this is the app compensating for the wild, the way
+ * every podcast client has to.
+ *
+ * `&amp;` is unfolded first on purpose: that is what turns the double-encoded form into
+ * a decodable entity before the numeric and named passes run.
+ */
+export function decodeEntities(raw: string): string {
+  return raw
+    .replace(/&amp;/g, '&')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number(dec)))
+    .replace(/&([a-z]+);/gi, (match, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? match)
+}
+
 /** Strips markup from a description without pulling in a sanitizer dependency. */
 function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  return decodeEntities(html.replace(/<[^>]*>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -146,8 +166,8 @@ export function parseFeed(xml: string, feedUrl: string): ParsedFeed {
   const podcast: Podcast = {
     id,
     feedUrl,
-    title: text(channel.title) || 'Untitled podcast',
-    author: text(channel['itunes:author']) || text(channel.managingEditor) || '',
+    title: decodeEntities(text(channel.title)) || 'Untitled podcast',
+    author: decodeEntities(text(channel['itunes:author']) || text(channel.managingEditor) || ''),
     description: stripHtml(text(channel.description) || text(channel['itunes:summary'])),
     artworkUrl,
     link: text(channel.link) || undefined,
@@ -173,7 +193,7 @@ export function parseFeed(xml: string, feedUrl: string): ParsedFeed {
       id: episodeIdFor(id, guid),
       podcastId: id,
       guid,
-      title: text(item.title) || 'Untitled episode',
+      title: decodeEntities(text(item.title)) || 'Untitled episode',
       description: stripHtml(
         text(item['content:encoded']) || text(item.description) || text(item['itunes:summary']),
       ),
