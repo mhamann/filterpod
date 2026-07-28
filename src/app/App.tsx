@@ -135,7 +135,7 @@ function Splash() {
   return (
     <div className="relative z-[2] flex h-full flex-col items-center justify-center gap-4">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-ember-500 text-panel-950">
-        <Icon name="scissors" size={30} />
+        <Icon name="asterisk" size={30} />
       </div>
       <p className="silkscreen animate-pulse-ember">Starting up</p>
     </div>
