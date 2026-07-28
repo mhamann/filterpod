@@ -9,6 +9,7 @@ import { PullToRefresh } from '@/ui/PullToRefresh'
 import { QueueButton } from '@/ui/QueueButton'
 import { usePlayerStore } from '@/features/player/playerStore'
 import { Icon } from '@/ui/Icon'
+import { ImportLogoCluster } from '@/ui/AppLogos'
 
 /**
  * Home: pick up where you left off, or pick a show. Nothing else.
@@ -116,16 +117,27 @@ export function Library() {
               app (Import) — and the second group needs the door shown to them here,
               not found later behind Settings.
             */
-            <div className="flex flex-col items-center gap-2.5">
+            <div className="flex flex-col items-center gap-4">
               <Link to="/discover">
                 <Button variant="primary" icon="search">
                   Find a podcast
                 </Button>
               </Link>
-              <Link to="/import">
-                <Button variant="secondary" icon="plus">
-                  Import from another app
-                </Button>
+              {/* The logos say "your old app's shows can come here" faster than any verb. */}
+              <Link
+                to="/import"
+                className="focus-ring flex items-center gap-3 rounded-2xl bg-panel-850 px-4 py-3 ring-1 ring-panel-700 active:scale-[0.98]"
+              >
+                <ImportLogoCluster size={30} />
+                <span className="text-left">
+                  <span className="block text-[13px] font-medium text-ink-100">
+                    Import from another app
+                  </span>
+                  <span className="block text-[11px] text-ink-600">
+                    Pocket Casts, Spotify &amp; more
+                  </span>
+                </span>
+                <Icon name="chevronRight" size={16} className="text-ink-600" />
               </Link>
             </div>
           }

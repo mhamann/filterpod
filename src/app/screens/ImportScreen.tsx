@@ -16,6 +16,12 @@ import {
 import { Button, SectionLabel } from '@/ui/components'
 import { Icon } from '@/ui/Icon'
 import { Header } from './Library'
+import {
+  ApplePodcastsLogo,
+  OvercastLogo,
+  PocketCastsLogo,
+  SpotifyLogo,
+} from '@/ui/AppLogos'
 
 type ItemState = 'pending' | 'importing' | 'done' | 'failed'
 
@@ -126,7 +132,20 @@ export function ImportScreen() {
       <Header title="Import" />
 
       <section className="px-4 pt-4">
-        <SectionLabel>From Pocket Casts and others</SectionLabel>
+        <div className="mb-1 flex items-center gap-2">
+          <span className="flex items-center">
+            {[PocketCastsLogo, OvercastLogo, ApplePodcastsLogo].map((Logo, index) => (
+              <span
+                key={index}
+                className="rounded-full ring-2 ring-panel-950"
+                style={{ width: 22, height: 22, marginLeft: index === 0 ? 0 : -6 }}
+              >
+                <Logo />
+              </span>
+            ))}
+          </span>
+          <SectionLabel>From Pocket Casts and others</SectionLabel>
+        </div>
         <p className="mb-3 text-[13px] leading-relaxed text-ink-500">
           Export an OPML file from your old app — in Pocket Casts that is Settings, then
           Import &amp; Export — and open it here. Subscriptions transfer; queues and
@@ -149,7 +168,12 @@ export function ImportScreen() {
       </section>
 
       <section className="px-4 pt-7">
-        <SectionLabel>From Spotify</SectionLabel>
+        <div className="mb-1 flex items-center gap-2">
+          <span className="rounded-full" style={{ width: 22, height: 22 }}>
+            <SpotifyLogo />
+          </span>
+          <SectionLabel>From Spotify</SectionLabel>
+        </div>
         {spotifyConfigured() ? (
           <>
             <p className="mb-3 text-[13px] leading-relaxed text-ink-500">
