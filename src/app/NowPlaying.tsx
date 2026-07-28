@@ -233,7 +233,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
             </Pill>
           ) : (
             <>
-              <Pill tone="ember" icon="scissors">
+              <Pill tone="ember" icon="asterisk">
                 {cutsPassed}/{spans.length} cuts
               </Pill>
               <Pill tone="neutral">−{timecode(totalCutSec)} total</Pill>

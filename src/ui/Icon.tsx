@@ -19,8 +19,11 @@ const PATHS = {
   close: 'M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7l-1.4-1.4L9.2 12 2.9 5.7l1.4-1.4 6.3 6.3 6.3-6.3z',
   chevronDown: 'M12 15.4 5.6 9l1.4-1.4 5 5 5-5L18.4 9z',
   chevronRight: 'M9 18.4 7.6 17l5-5-5-5L9 5.6l6.4 6.4z',
-  scissors:
-    'M9.6 3.4 14 10.9l1.6-2.7 3.9 6.7-1.7 1-2.9-5-.9 1.6 1.5 2.6a3 3 0 1 1-1.7 1l-1.3-2.3-1.3 2.3a3 3 0 1 1-1.7-1l1.5-2.6L4.5 3.4zM7.5 17a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z',
+  // The censored-word mark, same glyph as the launcher icon's grille. It replaced a
+  // hand-drawn scissors that read as a banana at pill size — and the asterisk says
+  // "bleeped word" more directly than cutting tools ever did.
+  asterisk:
+    'M13.5 20.6 L13.5 3.4 L10.5 3.4 L10.5 20.6zM5.3 17.6 L20.2 9.0 L18.7 6.4 L3.8 15.0zM3.8 9.0 L18.7 17.6 L20.2 15.0 L5.3 6.4z',
   // A list with a plus: add this to the queue.
   queue: 'M3 5h13v2H3zM3 10h13v2H3zM3 15h9v2H3zM18 13h2v3h3v2h-3v3h-2v-3h-3v-2h3z',
   plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',

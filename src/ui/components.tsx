@@ -127,7 +127,7 @@ export function FilterStatus({
         )
       }
       return (
-        <Pill tone="ember" icon="scissors">
+        <Pill tone="ember" icon="asterisk">
           {map.spans.length} so far
         </Pill>
       )
@@ -149,7 +149,7 @@ export function FilterStatus({
         )
       }
       return (
-        <Pill tone="sage" icon="scissors">
+        <Pill tone="sage" icon="asterisk">
           {map.spans.length} {compact ? '' : map.spans.length === 1 ? 'cut' : 'cuts'}
         </Pill>
       )
