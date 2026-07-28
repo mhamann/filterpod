@@ -110,12 +110,43 @@ copy ever implies that nothing will ever get through, a single slip makes the wh
 look dishonest. "Skips swearing" is a description of what it does; "never miss a word" would
 be a lie.
 
-## Assets still needed
+## Assets
 
-- **Feature graphic**, 1024×500. Required, and shown at the top of the listing.
-- **Phone screenshots**, at least 2, 16:9 or 9:16, min 320px. Now Playing mid-cut, the
-  filter levels in Settings, and the queue would show the most.
+- **Feature graphic**, 1024×500 — done: `docs/store/feature-graphic.png`, generated from
+  the same drawing as the icons (`assets/generate-icons.py`).
+- **Phone screenshots**, at least 2, min 320px, aspect at most 2:1 — captured from a real
+  device into `docs/store/`. Raw 1080×2340 captures are center-cropped to 1080×2160 to
+  satisfy the 2:1 limit.
 - **App icon**, 512×512 — `public/icon-512.png` is already this size and correct.
+- **Privacy policy URL** — required field. `PRIVACY.md` in the repo root; use the GitHub
+  URL: `https://github.com/mhamann/filterpod/blob/main/PRIVACY.md`.
+
+## Data safety form
+
+The honest answers are all "no": no data collected, no data shared, no data processed
+ephemerally by us (there is no "us" — no server). The form will still ask about network
+traffic; searches go to Apple's public podcast directory and audio comes from podcast
+hosts directly, neither of which is collection *by the developer*, which is what the form
+measures.
+
+## Release checklist
+
+Done in the repo:
+
+- [x] Upload keystore generated (`android/keystore/`, gitignored — **back it up**)
+- [x] `signingConfigs.release` wired into `android/app/build.gradle`
+- [x] `versionCode 3` / `versionName "0.3.0"`
+- [x] Signed AAB (`bundleRelease`) and APK (`assembleRelease`) build and verify
+- [x] Feature graphic
+- [x] Privacy policy
+
+Only the account owner can do:
+
+- [ ] Play Console developer account ($25 one-time)
+- [ ] New personal accounts must run a **closed test with 12 testers for 14 days**
+      before production access — plan for this, it is a calendar constraint
+- [ ] Content rating questionnaire and data safety form (answers above)
+- [ ] Upload the AAB, paste the listing copy, attach the assets
 
 ## Content rating
 

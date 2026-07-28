@@ -314,6 +314,49 @@ export async function pruneStalePreviews(): Promise<number> {
   return pruned
 }
 
+/**
+ * Re-decodes HTML entities in stored titles left behind by the pre-decode parser.
+ *
+ * Feeds parsed before decodeEntities existed stored titles like "The King&#39;s
+ * Chapel" verbatim, and refresh cannot heal them: conditional requests mean an
+ * unchanged feed answers 304 and is never re-parsed. So this walks what is already
+ * stored instead. Idempotent — decoding already-clean text changes nothing, so the
+ * writes stop happening after the first pass.
+ */
+export async function healEncodedTitles(): Promise<number> {
+  const { decodeEntities } = await import('@/features/feeds/parseFeed')
+  let healed = 0
+
+  for (const podcast of await db.podcasts.toArray()) {
+    const fixed = {
+      title: decodeEntities(podcast.title),
+      author: decodeEntities(podcast.author),
+      description: decodeEntities(podcast.description),
+    }
+    if (
+      fixed.title !== podcast.title ||
+      fixed.author !== podcast.author ||
+      fixed.description !== podcast.description
+    ) {
+      await db.podcasts.update(podcast.id, fixed)
+      healed++
+    }
+  }
+
+  for (const episode of await db.episodes.toArray()) {
+    const fixed = {
+      title: decodeEntities(episode.title),
+      description: decodeEntities(episode.description),
+    }
+    if (fixed.title !== episode.title || fixed.description !== episode.description) {
+      await db.episodes.update(episode.id, fixed)
+      healed++
+    }
+  }
+
+  return healed
+}
+
 // --- play queue -------------------------------------------------------------
 
 /**

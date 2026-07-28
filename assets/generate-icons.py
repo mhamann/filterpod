@@ -53,7 +53,29 @@ def main():
     (here / 'icon-maskable.svg').write_text(wrap(mark, 512, radius=0))
     # The store icon is the launcher icon. One mark, everywhere — that is the point.
     (here / 'icon-store.svg').write_text(wrap(asterisk(54, 54, 25, 11), 512))
+    (here / 'feature-graphic.svg').write_text(feature_graphic())
     print('icon SVGs written')
+
+
+def feature_graphic():
+    """Play's 1024x500 banner: the mark, the name, the tagline. Same glyph, same roast.
+
+    Text is real SVG text, not paths — rsvg-convert resolves the family at raster time,
+    so regenerating on another machine may shift metrics slightly. Acceptable: this is a
+    one-off store asset, not a build artifact.
+    """
+    mark = asterisk(0, 0, 40, 17)  # drawn around origin, placed via transform
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+<defs><radialGradient id="bgv" cx="0.38" cy="0.42" r="0.9">
+  <stop offset="0" stop-color="#1b120b"/><stop offset="1" stop-color="#0a0605"/>
+</radialGradient></defs>
+<rect width="1024" height="500" fill="url(#bgv)"/>
+<g transform="translate(248 250) scale(2.1)">{''.join(mark)}</g>
+<text x="428" y="272" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+  font-size="88" font-weight="700" fill="#f0e4d4" letter-spacing="-1">FilterPod</text>
+<text x="432" y="330" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+  font-size="34" font-weight="400" fill="{CREMA}">Coarse language, filtered out.</text>
+</svg>'''
 
 
 if __name__ == '__main__':

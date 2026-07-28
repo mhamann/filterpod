@@ -2,6 +2,7 @@ import { liveQuery } from 'dexie'
 import { getPlatform } from '@/platform'
 import {
   getSettings,
+  healEncodedTitles,
   initializeStore,
   pruneStalePreviews,
   reconcileFilterMaps,
@@ -109,6 +110,9 @@ export async function bootstrap(): Promise<void> {
 
   void (async () => {
     try {
+      // Old rows may hold entity-encoded titles that a 304-answering feed will never
+      // re-deliver decoded; heal them in place. No-op after the first pass.
+      await healEncodedTitles()
       await pruneStalePreviews()
       await refreshAndAutoDownload()
       await enforceStorageBudget()
