@@ -5,7 +5,7 @@ import { subscribeToFeed } from '@/features/subscriptions/service'
 import { parseOpml, type OpmlFeed } from '@/features/import/opml'
 import {
   SPOTIFY_REDIRECT_NATIVE,
-  SPOTIFY_REDIRECT_WEB_PATH,
+  SPOTIFY_REDIRECT_WEB,
   beginAuth,
   completeAuth,
   fetchSavedShows,
@@ -43,9 +43,7 @@ export function ImportScreen() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const redirectUri =
-    getPlatform().name === 'android'
-      ? SPOTIFY_REDIRECT_NATIVE
-      : location.origin + SPOTIFY_REDIRECT_WEB_PATH
+    getPlatform().name === 'android' ? SPOTIFY_REDIRECT_NATIVE : SPOTIFY_REDIRECT_WEB
 
   /** Both callback legs (custom scheme on Android, sessionStorage relay on web). */
   useEffect(() => {
