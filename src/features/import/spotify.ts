@@ -20,6 +20,21 @@ export const SPOTIFY_CLIENT_ID = ''
 export const SPOTIFY_REDIRECT_NATIVE = 'app.filterpod://spotify-callback'
 export const SPOTIFY_REDIRECT_WEB_PATH = '/spotify-callback'
 
+/**
+ * The browser-dev redirect. Spotify requires HTTPS for redirect URIs except explicit
+ * loopback IPs — `localhost` is rejected, `127.0.0.1` is allowed. That distinction
+ * matters beyond the dashboard form: sessionStorage is origin-scoped, so the PKCE
+ * verifier stored on a `localhost` page would be invisible to a callback landing on
+ * `127.0.0.1`. Dev-testing the Spotify flow therefore means opening the app at
+ * http://127.0.0.1:5173 from the start; beginAuth throws early on the wrong origin
+ * rather than letting the flow die confusingly at the token exchange.
+ *
+ * Register in the Spotify dashboard (Web API only, no SDK):
+ *   app.filterpod://spotify-callback
+ *   http://127.0.0.1:5173/spotify-callback
+ */
+export const SPOTIFY_REDIRECT_WEB = 'http://127.0.0.1:5173/spotify-callback'
+
 export const spotifyConfigured = (): boolean => SPOTIFY_CLIENT_ID.length > 0
 
 export interface SpotifyShow {
@@ -42,6 +57,9 @@ function base64Url(bytes: Uint8Array): string {
 
 /** Builds the authorize URL and stashes the PKCE verifier for the callback leg. */
 export async function beginAuth(redirectUri: string): Promise<string> {
+  if (redirectUri === SPOTIFY_REDIRECT_WEB && location.hostname === 'localhost') {
+    throw new Error('open the app at http://127.0.0.1:5173 to test Spotify import')
+  }
   const verifier = base64Url(crypto.getRandomValues(new Uint8Array(48)))
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
   sessionStorage.setItem('spotify_verifier', verifier)
