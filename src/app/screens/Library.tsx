@@ -110,11 +110,24 @@ export function Library() {
           title="Nothing here yet"
           body="Find a show and FilterPod will cut the language before you hear it."
           action={
-            <Link to="/discover">
-              <Button variant="primary" icon="search">
-                Find a podcast
-              </Button>
-            </Link>
+            /*
+              Both first-run paths, side by side. The person staring at an empty
+              library is either new to podcasts (Discover) or arriving from another
+              app (Import) — and the second group needs the door shown to them here,
+              not found later behind Settings.
+            */
+            <div className="flex flex-col items-center gap-2.5">
+              <Link to="/discover">
+                <Button variant="primary" icon="search">
+                  Find a podcast
+                </Button>
+              </Link>
+              <Link to="/import">
+                <Button variant="secondary" icon="plus">
+                  Import from another app
+                </Button>
+              </Link>
+            </div>
           }
         />
       ) : (
