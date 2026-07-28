@@ -67,6 +67,16 @@ function watchSkipIncrements(): void {
 }
 
 export async function bootstrap(): Promise<void> {
+  // Spotify's OAuth redirect lands on a real path with ?code=...; the router lives in
+  // the hash, so the code is relayed via sessionStorage and the URL cleaned up before
+  // anything else runs. Android uses a custom scheme and never passes through here.
+  if (location.pathname.includes('spotify-callback')) {
+    const code = new URLSearchParams(location.search).get('code')
+    if (code) sessionStorage.setItem('spotify_code', code)
+    history.replaceState(null, '', '/')
+    location.hash = '#/import'
+  }
+
   if (getPlatform().name === 'android' && (await evictStaleServiceWorker())) {
     // Reload once so the WebView loads assets from the APK rather than the dead cache.
     location.reload()

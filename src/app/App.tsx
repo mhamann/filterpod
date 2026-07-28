@@ -11,6 +11,7 @@ import { Discover } from './screens/Discover'
 import { PodcastDetail } from './screens/PodcastDetail'
 import { Downloads } from './screens/Downloads'
 import { Queue } from './screens/Queue'
+import { ImportScreen } from './screens/ImportScreen'
 import { Settings } from './screens/Settings'
 import { MiniPlayer, NowPlaying } from './NowPlaying'
 import { usePlayerStore } from '@/features/player/playerStore'
@@ -48,6 +49,7 @@ export function App() {
               <Route path="/discover" element={<Discover />} />
               <Route path="/podcast/:podcastId" element={<PodcastDetail />} />
               <Route path="/queue" element={<Queue />} />
+              <Route path="/import" element={<ImportScreen />} />
               <Route path="/downloads" element={<Downloads />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

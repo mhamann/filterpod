@@ -160,6 +160,20 @@ export function Settings() {
         </Row>
       </Group>
 
+      <Group label="Import">
+        <div className="px-4 py-3">
+          <p className="mb-2.5 text-[13px] leading-relaxed text-ink-500">
+            Moving from another app? Bring your subscriptions across.
+          </p>
+          <a
+            href="#/import"
+            className="focus-ring inline-flex items-center gap-2 rounded-full bg-panel-800 px-4 py-2 text-sm font-medium text-ink-100 ring-1 ring-panel-700"
+          >
+            <Icon name="plus" size={15} /> Import subscriptions
+          </a>
+        </div>
+      </Group>
+
       <Group label="About">
         <div className="space-y-2 px-4 py-3">
           <div className="flex items-center justify-between">
