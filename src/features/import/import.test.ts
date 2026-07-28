@@ -60,3 +60,38 @@ describe('Spotify show matching', () => {
     expect(miss.feedUrl).toBeUndefined()
   })
 })
+
+describe('parseSpotifyExport', () => {
+  it('reads saved shows out of the export zip', async () => {
+    const { default: JSZip } = await import('jszip')
+    const zip = new JSZip()
+    zip.file('Spotify Account Data/YourLibrary.json', JSON.stringify({
+      tracks: [{ artist: 'ignored' }],
+      shows: [
+        { name: 'The Daily', publisher: 'The New York Times' },
+        { name: 'No Publisher Show' },
+        { notAShow: true },
+      ],
+    }))
+    const blob = await zip.generateAsync({ type: 'blob' })
+    const { parseSpotifyExport } = await import('./spotify')
+
+    const shows = await parseSpotifyExport(new File([blob], 'my_spotify_data.zip'))
+    expect(shows).toEqual([
+      { name: 'The Daily', publisher: 'The New York Times' },
+      { name: 'No Publisher Show', publisher: '' },
+    ])
+  })
+
+  it('accepts a bare YourLibrary.json, and rejects files with no shows', async () => {
+    const { parseSpotifyExport } = await import('./spotify')
+    const shows = await parseSpotifyExport(
+      new File([JSON.stringify({ shows: [{ name: 'Solo' }] })], 'YourLibrary.json'),
+    )
+    expect(shows[0].name).toBe('Solo')
+
+    await expect(
+      parseSpotifyExport(new File([JSON.stringify({ tracks: [] })], 'other.json')),
+    ).rejects.toThrow('no saved shows')
+  })
+})

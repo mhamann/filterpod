@@ -34,6 +34,7 @@
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",
     "fast-xml-parser": "^5.10.1",
+    "jszip": "^3.10.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
