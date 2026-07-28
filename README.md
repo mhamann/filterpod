@@ -137,6 +137,12 @@ Every `LOAD` segment must show alignment `0x4000`.
 
 You can add your own words to cut, or exempt words from the built-in list, in Settings.
 
+## Privacy
+
+There is nothing to disclose, which is itself the disclosure: no server, no account, no
+analytics, and transcription happens on-device. [PRIVACY.md](PRIVACY.md) says so at the
+length app stores require.
+
 ## Contributing
 
 Bug reports are welcome, and a filtering miss reported with an episode and a timestamp is

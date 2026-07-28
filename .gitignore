@@ -39,3 +39,10 @@ android/.idea/
 *.apk
 *.aab
 *.keystore
+
+# Release signing: the keystore and its passwords never enter git. Back both files up
+# somewhere safe — losing the upload key means proving identity to Google to reset it.
+android/keystore/
+
+# Raw device screenshots pre-crop; they carry the phone's own status bar.
+docs/store/raw/
