@@ -9,6 +9,7 @@ import { Icon } from '@/ui/Icon'
 import { PullToRefresh } from '@/ui/PullToRefresh'
 import { subscribeToFeed, unsubscribeFromFeed } from '@/features/subscriptions/service'
 import { fetchFeed } from '@/features/feeds/refresh'
+import { usePlayerStore } from '@/features/player/playerStore'
 
 const PAGE_SIZE = 30
 
@@ -327,26 +328,33 @@ function FilteringControl({ podcastId, overrideId }: { podcastId: string; overri
             <ProfilePill
               label="Default"
               selected={!overrideId}
-              onSelect={() => void db.subscriptions.update(podcastId, { filterProfileId: undefined })}
+              onSelect={() => void selectProfile(podcastId, undefined)}
             />
             {ordered.map((profile) => (
               <ProfilePill
                 key={profile.id}
                 label={profile.name}
                 selected={overrideId === profile.id}
-                onSelect={() =>
-                  void db.subscriptions.update(podcastId, { filterProfileId: profile.id })
-                }
+                onSelect={() => void selectProfile(podcastId, profile.id)}
               />
             ))}
           </div>
           <p className="mt-2 text-[11px] leading-snug text-ink-600">
-            Applies from the next episode you play.
+            Takes effect immediately, including anything playing now.
           </p>
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * Persists the override, then re-tunes the live filter if this show is what's playing —
+ * a changed setting that quietly waited for the next episode read as a broken one.
+ */
+async function selectProfile(podcastId: string, profileId: string | undefined) {
+  await db.subscriptions.update(podcastId, { filterProfileId: profileId })
+  await usePlayerStore.getState().applyProfileChange(podcastId)
 }
 
 function ProfilePill({

@@ -98,6 +98,13 @@ interface PlayerState {
    * restored for display.
    */
   reconnect(): Promise<void>
+  /**
+   * Re-tunes live filtering after a show's filter profile changes, when the episode
+   * playing right now belongs to that show. Playback keeps running under the old spans
+   * while the new profile's lead-in analyzes; the frontier guards hold it back if it
+   * outruns the fresh coverage. No-op when nothing of that show is loaded.
+   */
+  applyProfileChange(podcastId: string): Promise<void>
   /** Puts the last-played episode back on screen, without loading or filtering it. */
   restoreLast(): Promise<void>
   play(): Promise<void>
@@ -432,6 +439,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     }
 
     await get().restoreLast()
+  },
+
+  async applyProfileChange(podcastId) {
+    const { episode, loaded, positionSec } = get()
+    if (!episode || episode.podcastId !== podcastId || !loaded) return
+
+    const [profile, overrides, settings] = await Promise.all([
+      getProfileForPodcast(podcastId),
+      listWordOverrides(),
+      getSettings(),
+    ])
+
+    // A different profile means the running session and its stored map are both stale;
+    // startLiveFilter tears them down itself (the profile-mismatch discard) and begins
+    // analyzing under the new rules from wherever the playhead is now.
+    try {
+      const { spans, ranges } = await startLiveFilter({
+        episode,
+        fileKey: fileKeyFor(episode.id),
+        profile,
+        overrides,
+        model: settings.whisperModel,
+        startAtSec: positionSec,
+        callbacks: filterCallbacks(episode.id),
+      })
+      set({ spans, analyzedRanges: ranges })
+      await getPlatform().player.setFilterSpans(spans, ranges)
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) })
+    }
   },
 
   /**
