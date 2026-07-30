@@ -1,6 +1,7 @@
 import type { EpisodeId, PodcastId } from '@/core/types'
 import { podcastIdFor } from '@/data/db'
 import {
+  enqueueEpisode,
   listEpisodes,
   listSubscriptions,
   subscribe as persistSubscription,
@@ -69,8 +70,9 @@ export async function unsubscribeFromFeed(podcastId: PodcastId): Promise<void> {
 }
 
 /**
- * Refreshes every feed and auto-downloads new episodes for subscriptions that want it.
- * Returns the episodes queued, which is what the UI reports as "N new episodes".
+ * Refreshes every feed, then applies each subscription's new-episode behaviour:
+ * auto-download and/or auto-queue. Returns the episodes queued for download, which is
+ * what the UI reports as "N new episodes".
  */
 export async function refreshAndAutoDownload(): Promise<EpisodeId[]> {
   const results = await refreshAllSubscriptions()
@@ -80,7 +82,8 @@ export async function refreshAndAutoDownload(): Promise<EpisodeId[]> {
 
   for (const result of results) {
     const subscription = byPodcast.get(result.podcastId)
-    if (!subscription?.autoDownload || result.newEpisodeIds.length === 0) continue
+    if (!subscription || result.newEpisodeIds.length === 0) continue
+    if (!subscription.autoDownload && !subscription.autoQueue) continue
 
     // Newest first, so a feed that dumps a backlog does not queue it oldest-first.
     const episodes = await db.episodes.bulkGet(result.newEpisodeIds)
@@ -88,10 +91,21 @@ export async function refreshAndAutoDownload(): Promise<EpisodeId[]> {
       .filter((episode): episode is NonNullable<typeof episode> => Boolean(episode))
       .sort((a, b) => b.publishedAt - a.publishedAt)
 
-    const limit = subscription.autoDownloadLimit || ordered.length
-    for (const episode of ordered.slice(0, limit)) {
-      await enqueueDownload(episode.id, { auto: true })
-      queued.push(episode.id)
+    if (subscription.autoDownload) {
+      const limit = subscription.autoDownloadLimit || ordered.length
+      for (const episode of ordered.slice(0, limit)) {
+        await enqueueDownload(episode.id, { auto: true })
+        queued.push(episode.id)
+      }
+    }
+
+    if (subscription.autoQueue) {
+      // Appended oldest-first: the queue plays top-down, and Monday's episode should
+      // play before Tuesday's. No limit — the queue is an intention list, not storage,
+      // and anything unwanted is one swipe from gone.
+      for (const episode of [...ordered].reverse()) {
+        await enqueueEpisode(episode.id)
+      }
     }
   }
 

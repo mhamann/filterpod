@@ -74,6 +74,14 @@ export interface Subscription {
   /** How many recent episodes to keep downloaded; 0 means unlimited. */
   autoDownloadLimit: number
   notifyOnNew: boolean
+  /**
+   * New episodes join the end of the queue when the feed refreshes.
+   *
+   * This is the "subscribed, not just following" behaviour, expressed as a per-show
+   * toggle rather than a second tier of subscription: one concept in every button and
+   * import path, with the queue behaviour opted into where someone actually wants it.
+   */
+  autoQueue?: boolean
   /** Overrides the global filter profile for this feed when set. */
   filterProfileId?: string
 }
