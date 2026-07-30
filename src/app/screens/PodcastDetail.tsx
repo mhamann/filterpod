@@ -12,6 +12,9 @@ import { fetchFeed } from '@/features/feeds/refresh'
 
 const PAGE_SIZE = 30
 
+/** How long a feed must fail before the show page says so. One flaky refresh is not news. */
+const STALE_FEED_MS = 24 * 60 * 60 * 1000
+
 export function PodcastDetail() {
   const { podcastId = '' } = useParams()
   const navigate = useNavigate()
@@ -117,11 +120,21 @@ export function PodcastDetail() {
           )}
         </div>
 
-        {podcast.lastFetchError && (
-          <p className="mt-3 rounded-lg bg-alarm-500/10 px-3 py-2 text-[12px] text-alarm-400 ring-1 ring-alarm-500/25">
-            Last refresh failed: {podcast.lastFetchError}
-          </p>
-        )}
+        {/*
+          Only when the feed has been failing for a while. A single failed refresh is
+          usually transient — a dead spot, a host hiccup — and the cached episodes on
+          screen are still perfectly good, so alarming on every blip trained people to
+          ignore the banner. A day without one successful fetch is a real problem.
+          Rows that predate lastSuccessAt stay quiet until a success stamps them.
+        */}
+        {podcast.lastFetchError &&
+          podcast.lastSuccessAt &&
+          Date.now() - podcast.lastSuccessAt > STALE_FEED_MS && (
+            <p className="mt-3 rounded-lg bg-alarm-500/10 px-3 py-2 text-[12px] text-alarm-400 ring-1 ring-alarm-500/25">
+              This feed has not refreshed successfully since{' '}
+              {new Date(podcast.lastSuccessAt).toLocaleDateString()}: {podcast.lastFetchError}
+            </p>
+          )}
 
         <Description text={podcast.description} />
       </header>
