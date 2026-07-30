@@ -33,6 +33,8 @@ export interface FilterPlayerPlugin {
   setRate(options: { rate: number }): Promise<void>
   /** Increments for the notification and lock-screen skip buttons. */
   setSkipIncrements(options: { backSec: number; forwardSec: number }): Promise<void>
+  /** One crisp EFFECT_TICK, for gesture detents. */
+  hapticTick(): Promise<void>
   /** Spans are evaluated on a native handler, so skipping survives the screen going off. */
   setFilterSpans(options: {
     spans: FilterSpan[]

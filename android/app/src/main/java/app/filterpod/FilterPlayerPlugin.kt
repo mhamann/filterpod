@@ -198,6 +198,32 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
         )
     }
 
+    /**
+     * One crisp haptic tick, for gesture detents in the web layer.
+     *
+     * Here and not in @capacitor/haptics because that plugin's selectionChanged() is an
+     * iOS concept that quietly does nothing on Android — verified in the vibrator log:
+     * three calls, zero vibrations. EFFECT_TICK is the platform's own detent feel.
+     */
+    @PluginMethod
+    fun hapticTick(call: PluginCall) {
+        val vibrator = if (android.os.Build.VERSION.SDK_INT >= 31) {
+            val manager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE)
+                as android.os.VibratorManager
+            manager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            vibrator.vibrate(android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK))
+        } else {
+            // No predefined effects below API 29; a short one-shot is the nearest feel.
+            vibrator.vibrate(android.os.VibrationEffect.createOneShot(10, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+        call.resolve()
+    }
+
     @PluginMethod
     fun release(call: PluginCall) {
         service()?.listener = null
