@@ -225,6 +225,19 @@ export interface TranscriberPlatform {
 }
 
 // ---------------------------------------------------------------------------
+// Haptics
+// ---------------------------------------------------------------------------
+
+export interface HapticsPlatform {
+  /**
+   * One crisp tick, for a gesture crossing a detent — a dragged row snapping into a
+   * new slot, a swipe passing the point where release commits. Fire-and-forget and
+   * silent where unsupported (desktop browsers).
+   */
+  tick(): void
+}
+
+// ---------------------------------------------------------------------------
 // Composite
 // ---------------------------------------------------------------------------
 
@@ -235,6 +248,7 @@ export interface Platform {
   downloads: DownloadsPlatform
   player: PlayerPlatform
   transcriber: TranscriberPlatform
+  haptics: HapticsPlatform
   /** True when playback and skipping survive the screen being off. */
   supportsBackgroundPlayback: boolean
 }

@@ -27,6 +27,10 @@ function createWebPlatform(): Platform {
     downloads: createWebDownloads(files),
     player: createWebPlayer(),
     transcriber: createWebTranscriber(files),
+    haptics: {
+      // A dull buzz, but the closest a browser gets; desktop quietly no-ops.
+      tick: () => navigator.vibrate?.(8),
+    },
     // rAF is suspended with the screen off, so web skipping is foreground-only.
     supportsBackgroundPlayback: false,
   }
