@@ -86,6 +86,18 @@ interface PlayerState {
   loaded: boolean
 
   open(episodeId: string, autoPlay?: boolean): Promise<void>
+  /**
+   * Reconnects this page to whatever playback is really happening.
+   *
+   * The playback service outlives the WebView, so a fresh page may arrive while audio
+   * is already playing. Reattaching — rather than re-loading the player, which resets
+   * the stream and audibly hiccups — picks up the live position, resubscribes to
+   * status, and restarts the analysis pipeline the old page took with it. When the
+   * service is gone instead, the native position journal reconciles stored progress
+   * (the web layer's own saves freeze in the background) and the last episode is
+   * restored for display.
+   */
+  reconnect(): Promise<void>
   /** Puts the last-played episode back on screen, without loading or filtering it. */
   restoreLast(): Promise<void>
   play(): Promise<void>
@@ -107,7 +119,97 @@ let lastSaveAt = 0
 /** Episodes whose measured duration was already written back this session. */
 const measuredDurationSaved = new Set<string>()
 
-export const usePlayerStore = create<PlayerState>((set, get) => ({
+export const usePlayerStore = create<PlayerState>((set, get) => {
+  /** Callbacks the live filter uses to drive the store and the native player. */
+  const filterCallbacks = (episodeId: string) => ({
+    onUpdate: (nextSpans: FilterSpan[], nextRanges: AnalyzedRange[]) => {
+      // Only the currently open episode may drive the player.
+      if (get().episode?.id !== episodeId) return
+      set({ spans: nextSpans, analyzedRanges: nextRanges })
+      void getPlatform().player.setFilterSpans(nextSpans, nextRanges)
+      // New coverage may have unblocked a playhead that was waiting.
+      if (get().catchingUp) void get().play()
+    },
+    onModelProgress: (fraction: number) => {
+      if (get().episode?.id !== episodeId) return
+      set({ modelProgress: fraction < 1 ? fraction : null })
+    },
+    onError: (message: string) => {
+      if (get().episode?.id === episodeId) set({ error: message })
+    },
+  })
+
+  /** Subscribes the store to player status. Shared by open() and reconnect(). */
+  const attachStatus = (episode: Episode, completionThresholdSec: number) => {
+    const episodeId = episode.id
+    const platform = getPlatform()
+    unsubscribeStatus?.()
+    unsubscribeSkip?.()
+
+    unsubscribeStatus = platform.player.onStatus((status) => {
+      set({
+        state: status.state,
+        positionSec: status.positionSec,
+        durationSec: status.durationSec || get().durationSec,
+        skippedSec: status.skippedSec,
+        error: status.error,
+      })
+
+      // The player's measured duration is ground truth; feeds lie by whole percents.
+      // Written back once per episode so the timeline, the remaining-time display and
+      // the filter pipeline's end clamp stop trusting the feed's number.
+      if (
+        status.durationSec > 1 &&
+        !measuredDurationSaved.has(episodeId) &&
+        Math.abs(status.durationSec - (episode.durationSec ?? 0)) > 2
+      ) {
+        measuredDurationSaved.add(episodeId)
+        updateDurationSec(status.durationSec)
+        void recordMeasuredDuration(episodeId, status.durationSec)
+      }
+
+      // Keep the analysis frontier ahead of where we are.
+      maybeResume(status.positionSec)
+
+      // The guard that makes partial analysis safe: never let the playhead cross into
+      // audio nobody has looked at. Unanalyzed is unknown, not clean.
+      const { analyzedRanges, catchingUp } = get()
+      if (status.state === 'playing' && analyzedRanges.length > 0) {
+        const frontier = analyzedUntil(analyzedRanges, status.positionSec)
+        const atFrontier =
+          !isAnalyzed(analyzedRanges, status.positionSec) ||
+          status.positionSec >= frontier - FRONTIER_MARGIN_SEC
+
+        // Genuinely reaching the end of the episode is not "catching up".
+        const atEnd =
+          status.durationSec > 0 && frontier >= status.durationSec - FRONTIER_MARGIN_SEC
+
+        if (atFrontier && !atEnd) {
+          set({ catchingUp: true })
+          void platform.player.pause()
+        }
+      } else if (catchingUp && status.state === 'playing') {
+        set({ catchingUp: false })
+      }
+
+      const now = Date.now()
+      if (status.state === 'playing' && now - lastSaveAt > SAVE_INTERVAL_MS) {
+        lastSaveAt = now
+        void saveProgress(episodeId, status.positionSec, status.durationSec, completionThresholdSec)
+      }
+      if (status.state === 'ended') {
+        void saveProgress(episodeId, status.durationSec, status.durationSec, completionThresholdSec)
+        void advanceQueue()
+      }
+    })
+
+    unsubscribeSkip = platform.player.onSkip(() => {
+      // Status events already carry the running total; this hook exists for
+      // transient UI ("skipped a word") without re-rendering on every tick.
+    })
+  }
+
+  return {
   episode: null,
   podcast: null,
   spans: [],
@@ -237,26 +339,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         overrides,
         model: settings.whisperModel,
         startAtSec,
-        callbacks: {
-          onUpdate: (nextSpans, nextRanges) => {
-            // Only the currently open episode may drive the player.
-            if (get().episode?.id !== episodeId) return
-            set({ spans: nextSpans, analyzedRanges: nextRanges })
-            void platform.player.setFilterSpans(nextSpans)
-            // New coverage may have unblocked a playhead that was waiting.
-            if (get().catchingUp) void get().play()
-          },
-          onModelProgress: (fraction) => {
-            if (get().episode?.id !== episodeId) return
-            set({ modelProgress: fraction < 1 ? fraction : null })
-          },
-          onError: (message) => {
-            if (get().episode?.id === episodeId) set({ error: message })
-          },
-        },
+        callbacks: filterCallbacks(episodeId),
       })
       set({ spans, analyzedRanges: ranges, preparing: false, modelProgress: null })
-      await platform.player.setFilterSpans(spans)
+      await platform.player.setFilterSpans(spans, ranges)
     } catch (error) {
       set({
         preparing: false,
@@ -265,79 +351,87 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       })
     }
 
-    unsubscribeStatus = platform.player.onStatus((status) => {
-      set({
-        state: status.state,
-        positionSec: status.positionSec,
-        durationSec: status.durationSec || get().durationSec,
-        skippedSec: status.skippedSec,
-        error: status.error,
-      })
-
-      // The player's measured duration is ground truth; feeds lie by whole percents.
-      // Written back once per episode so the timeline, the remaining-time display and
-      // the filter pipeline's end clamp stop trusting the feed's number.
-      if (
-        status.durationSec > 1 &&
-        !measuredDurationSaved.has(episodeId) &&
-        Math.abs(status.durationSec - (episode.durationSec ?? 0)) > 2
-      ) {
-        measuredDurationSaved.add(episodeId)
-        updateDurationSec(status.durationSec)
-        void recordMeasuredDuration(episodeId, status.durationSec)
-      }
-
-      // Keep the analysis frontier ahead of where we are.
-      maybeResume(status.positionSec)
-
-      // The guard that makes partial analysis safe: never let the playhead cross into
-      // audio nobody has looked at. Unanalyzed is unknown, not clean.
-      const { analyzedRanges, catchingUp } = get()
-      if (status.state === 'playing' && analyzedRanges.length > 0) {
-        const frontier = analyzedUntil(analyzedRanges, status.positionSec)
-        const atFrontier =
-          !isAnalyzed(analyzedRanges, status.positionSec) ||
-          status.positionSec >= frontier - FRONTIER_MARGIN_SEC
-
-        // Genuinely reaching the end of the episode is not "catching up".
-        const atEnd =
-          status.durationSec > 0 && frontier >= status.durationSec - FRONTIER_MARGIN_SEC
-
-        if (atFrontier && !atEnd) {
-          set({ catchingUp: true })
-          void platform.player.pause()
-        }
-      } else if (catchingUp && status.state === 'playing') {
-        set({ catchingUp: false })
-      }
-
-      const now = Date.now()
-      if (status.state === 'playing' && now - lastSaveAt > SAVE_INTERVAL_MS) {
-        lastSaveAt = now
-        void saveProgress(
-          episodeId,
-          status.positionSec,
-          status.durationSec,
-          settings.completionThresholdSec,
-        )
-      }
-      if (status.state === 'ended') {
-        void saveProgress(
-          episodeId,
-          status.durationSec,
-          status.durationSec,
-          settings.completionThresholdSec,
-        )
-        void advanceQueue()
-      }
-    })
-
-    unsubscribeSkip = platform.player.onSkip(() => {
-      // Status events already carry the running total; this hook exists for
-      // transient UI ("skipped a word") without re-rendering on every tick.
-    })
+    attachStatus(episode, settings.completionThresholdSec)
 
     if (autoPlay) await get().play()
+  },
+
+  async reconnect() {
+    const platform = getPlatform()
+    const snap = await platform.player.getState().catch(() => null)
+
+    if (snap?.running && snap.episodeId) {
+      const episode = await getEpisode(snap.episodeId)
+      if (episode) {
+        const [podcast, map, settings, profile, overrides] = await Promise.all([
+          getPodcast(episode.podcastId),
+          getFilterMap(episode.id),
+          getSettings(),
+          getProfileForPodcast(episode.podcastId),
+          listWordOverrides(),
+        ])
+
+        set({
+          episode,
+          podcast: podcast ?? null,
+          spans: map?.spans ?? [],
+          analyzedRanges: mergeRanges(map?.analyzedRanges ?? []),
+          state: snap.state ?? 'paused',
+          positionSec: snap.positionSec ?? 0,
+          durationSec: snap.durationSec || episode.durationSec || 0,
+          skippedSec: snap.skippedSec ?? 0,
+          rate: settings.playbackRate,
+          loaded: true,
+          preparing: false,
+          modelProgress: null,
+          catchingUp: false,
+          error: undefined,
+        })
+        attachStatus(episode, settings.completionThresholdSec)
+
+        // The analysis pipeline died with the previous page; restart it pointed at the
+        // live playhead. Playback keeps running while the lead-in re-analyzes — the
+        // frontier guards hold it back if it gets ahead of coverage.
+        try {
+          const { spans, ranges } = await startLiveFilter({
+            episode,
+            fileKey: fileKeyFor(episode.id),
+            profile,
+            overrides,
+            model: settings.whisperModel,
+            startAtSec: snap.positionSec ?? 0,
+            callbacks: filterCallbacks(episode.id),
+          })
+          set({ spans, analyzedRanges: ranges })
+          await platform.player.setFilterSpans(spans, ranges)
+        } catch (error) {
+          set({ error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+    }
+
+    // The service is gone, but it may know a better resume point than we do: the web
+    // layer's own saves freeze whenever the page is backgrounded, and a pause pressed
+    // on an earbud never reaches a frozen page at all.
+    const saved = snap?.lastSaved
+    if (saved) {
+      const existing = await getProgress(saved.episodeId)
+      if (!existing || (existing.lastPlayedAt ?? 0) < saved.updatedAt) {
+        const episode = await getEpisode(saved.episodeId)
+        if (episode) {
+          const settings = await getSettings()
+          await saveProgress(
+            saved.episodeId,
+            saved.positionSec,
+            existing?.durationSec ?? episode.durationSec ?? 0,
+            settings.completionThresholdSec,
+          )
+        }
+      }
+    }
+
+    await get().restoreLast()
   },
 
   /**
@@ -475,7 +569,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (!episode) return
     const map = await getFilterMap(episode.id)
     if (!map) return
-    if (get().loaded) await getPlatform().player.setFilterSpans(map.spans)
+    if (get().loaded) await getPlatform().player.setFilterSpans(map.spans, map.analyzedRanges)
     set({ spans: map.spans, analyzedRanges: mergeRanges(map.analyzedRanges) })
   },
 
@@ -498,7 +592,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       catchingUp: false,
     })
   },
-}))
+  }
+})
 
 /**
  * Advances to the next queued episode when one finishes.

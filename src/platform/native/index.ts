@@ -225,11 +225,16 @@ function createNativePlayer(): PlayerPlatform {
       }),
     play: () => FilterPlayer.play(),
     pause: () => FilterPlayer.pause(),
+    async getState() {
+      const snap = await FilterPlayer.getState()
+      return { ...snap, state: snap.state as PlayerStatus['state'] | undefined }
+    },
     seek: (positionSec) => FilterPlayer.seek({ positionSec }),
     setRate: (rate) => FilterPlayer.setRate({ rate }),
     setSkipIncrements: (backSec, forwardSec) =>
       FilterPlayer.setSkipIncrements({ backSec, forwardSec }),
-    setFilterSpans: (spans) => FilterPlayer.setFilterSpans({ spans: normalizeSpans(spans) }),
+    setFilterSpans: (spans, analyzedRanges) =>
+      FilterPlayer.setFilterSpans({ spans: normalizeSpans(spans), analyzed: analyzedRanges }),
     onStatus(cb) {
       statusListeners.push(cb)
       return () => {

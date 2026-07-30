@@ -19,12 +19,26 @@ export interface FilterPlayerPlugin {
   }): Promise<void>
   play(): Promise<void>
   pause(): Promise<void>
+  /** Live snapshot of the service, or the last journaled position if it is gone. */
+  getState(): Promise<{
+    running: boolean
+    episodeId?: string
+    state?: string
+    positionSec?: number
+    durationSec?: number
+    skippedSec?: number
+    lastSaved?: { episodeId: string; positionSec: number; updatedAt: number }
+  }>
   seek(options: { positionSec: number }): Promise<void>
   setRate(options: { rate: number }): Promise<void>
   /** Increments for the notification and lock-screen skip buttons. */
   setSkipIncrements(options: { backSec: number; forwardSec: number }): Promise<void>
   /** Spans are evaluated on a native handler, so skipping survives the screen going off. */
-  setFilterSpans(options: { spans: FilterSpan[] }): Promise<void>
+  setFilterSpans(options: {
+    spans: FilterSpan[]
+    /** Analyzed coverage, arming the native pause-at-frontier backstop. */
+    analyzed?: Array<{ startSec: number; endSec: number }>
+  }): Promise<void>
   release(): Promise<void>
   addListener(
     event: 'status',
