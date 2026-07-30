@@ -1,5 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
+import { Haptics } from '@capacitor/haptics'
 import type { FilterSpan, TimedWord } from '@/core/types'
 import { normalizeSpans } from '@/core/filterMath'
 import type {
@@ -331,6 +332,10 @@ export function createNativePlatform(): Platform {
     downloads: createNativeDownloads(),
     player: createNativePlayer(),
     transcriber: createNativeTranscriber(),
+    haptics: {
+      // The OS selection tick — crisp, quiet, and what every system list drag uses.
+      tick: () => void Haptics.selectionChanged().catch(() => {}),
+    },
     supportsBackgroundPlayback: true,
   }
 }

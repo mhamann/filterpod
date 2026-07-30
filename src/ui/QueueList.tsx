@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import clsx from 'clsx'
 import { db } from '@/data/db'
 import { moveInQueue, removeFromQueue } from '@/data/repo'
+import { getPlatform } from '@/platform'
 import { usePlayerStore } from '@/features/player/playerStore'
 import { duration } from './format'
 import { Icon } from './Icon'
@@ -65,7 +66,14 @@ export function QueueList() {
   const [drag, setDrag] = useState<DragState | null>(null)
   const [swipe, setSwipe] = useState<SwipeState | null>(null)
   const dragStartY = useRef(0)
-  const gesture = useRef<{ id: string; startX: number; startY: number; mode: 'idle' | 'swipe' | 'scroll' } | null>(null)
+  const gesture = useRef<{
+    id: string
+    startX: number
+    startY: number
+    mode: 'idle' | 'swipe' | 'scroll'
+    /** Whether the swipe is currently past the point where release removes. */
+    armed?: boolean
+  } | null>(null)
   // A swipe releases directly over the row's own tap target; this keeps that release
   // from also counting as "open the episode".
   const suppressTap = useRef(false)
@@ -90,6 +98,8 @@ export function QueueList() {
         (items?.length ?? 1) - 1,
         Math.max(firstMovable, current.from + Math.round(dy / current.rowH)),
       )
+      // The detent: each slot the row snaps into is felt, not just seen.
+      if (to !== current.to) getPlatform().haptics.tick()
       return { ...current, dy, to }
     })
   }
@@ -123,6 +133,15 @@ export function QueueList() {
       } else {
         return
       }
+    }
+
+    // Tick when the swipe arms (and again if it backs off), so the finger knows the
+    // moment release stops being harmless — the "little force" made legible.
+    const width = (event.currentTarget as HTMLElement).offsetWidth
+    const armed = Math.abs(dx) >= width * REMOVE_FRACTION
+    if (armed !== Boolean(g.armed)) {
+      g.armed = armed
+      getPlatform().haptics.tick()
     }
 
     setSwipe({ id, dx, active: true })
