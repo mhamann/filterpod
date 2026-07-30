@@ -20,6 +20,13 @@ export function PodcastDetail() {
   const navigate = useNavigate()
   const [limit, setLimit] = useState(PAGE_SIZE)
   const [busy, setBusy] = useState(false)
+  /**
+   * A failure from a refresh the user asked for, shown immediately. Distinct from
+   * podcast.lastFetchError, which background refreshes also write and which only earns
+   * the banner after a day of failures — someone who just pulled to refresh deserves to
+   * know it did not work, right now, not in 24 hours.
+   */
+  const [manualError, setManualError] = useState<string | null>(null)
 
   const podcast = useLiveQuery(() => db.podcasts.get(podcastId), [podcastId])
   const subscription = useLiveQuery(() => db.subscriptions.get(podcastId), [podcastId])
@@ -54,7 +61,12 @@ export function PodcastDetail() {
   const isSubscribed = Boolean(subscription)
 
   return (
-    <PullToRefresh onRefresh={async () => void (await fetchFeed(podcast.feedUrl))}>
+    <PullToRefresh
+      onRefresh={async () => {
+        const result = await fetchFeed(podcast.feedUrl)
+        setManualError(result.error ?? null)
+      }}
+    >
     <div className="animate-rise pb-6">
       <div className="rack-texture flex items-center gap-1 border-b border-panel-800 px-2 py-2">
         <button
@@ -121,20 +133,27 @@ export function PodcastDetail() {
         </div>
 
         {/*
-          Only when the feed has been failing for a while. A single failed refresh is
-          usually transient — a dead spot, a host hiccup — and the cached episodes on
-          screen are still perfectly good, so alarming on every blip trained people to
-          ignore the banner. A day without one successful fetch is a real problem.
+          Two tiers. A failure from a pull the user just made is answered immediately —
+          they asked, so they get told. Background failures stay quiet: a single blip is
+          usually transient and the cached episodes on screen are still perfectly good,
+          so alarming on every one trained people to ignore the banner. Only a feed that
+          has gone a day without a single successful fetch earns the persistent version.
           Rows that predate lastSuccessAt stay quiet until a success stamps them.
         */}
-        {podcast.lastFetchError &&
+        {manualError ? (
+          <p className="mt-3 rounded-lg bg-alarm-500/10 px-3 py-2 text-[12px] text-alarm-400 ring-1 ring-alarm-500/25">
+            Refresh failed: {manualError}
+          </p>
+        ) : (
+          podcast.lastFetchError &&
           podcast.lastSuccessAt &&
           Date.now() - podcast.lastSuccessAt > STALE_FEED_MS && (
             <p className="mt-3 rounded-lg bg-alarm-500/10 px-3 py-2 text-[12px] text-alarm-400 ring-1 ring-alarm-500/25">
               This feed has not refreshed successfully since{' '}
               {new Date(podcast.lastSuccessAt).toLocaleDateString()}: {podcast.lastFetchError}
             </p>
-          )}
+          )
+        )}
 
         <Description text={podcast.description} />
       </header>
