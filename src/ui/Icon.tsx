@@ -26,6 +26,7 @@ const PATHS = {
     'M13.5 20.6 L13.5 3.4 L10.5 3.4 L10.5 20.6zM5.3 17.6 L20.2 9.0 L18.7 6.4 L3.8 15.0zM3.8 9.0 L18.7 17.6 L20.2 15.0 L5.3 6.4z',
   // A list with a plus: add this to the queue.
   queue: 'M3 5h13v2H3zM3 10h13v2H3zM3 15h9v2H3zM18 13h2v3h3v2h-3v3h-2v-3h-3v-2h3z',
+  grip: 'M9 5h2v2H9zM13 5h2v2h-2zM9 11h2v2H9zM13 11h2v2h-2zM9 17h2v2H9zM13 17h2v2h-2z',
   plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
   trash: 'M9 3h6l1 2h4v2H4V5h4zM6 8h12l-1 13H7z',
   refresh:
