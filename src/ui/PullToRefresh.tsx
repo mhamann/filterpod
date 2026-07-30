@@ -36,6 +36,12 @@ const DAMPING = 0.5
  */
 const HAND_BACK_PX = 10
 
+/** How far above the top edge the indicator disc hides when idle. */
+const DISC_HIDDEN_PX = 56
+
+/** Disc travel per damped pull pixel; >1 so the disc clears the edge before the trigger. */
+const INDICATOR_TRAVEL = 1.4
+
 export function PullToRefresh({
   onRefresh,
   children,
@@ -129,30 +135,44 @@ export function PullToRefresh({
 
   const armed = pull >= TRIGGER_PX
 
+  // Android convention: the content does not move. A floating disc descends from under
+  // the top edge as the pull builds, and holds there spinning while the refresh runs.
+  const discY = refreshing
+    ? TRIGGER_PX * INDICATOR_TRAVEL - DISC_HIDDEN_PX
+    : Math.min(pull, MAX_PULL_PX) * INDICATOR_TRAVEL - DISC_HIDDEN_PX
+
   return (
     <div
       ref={rootRef}
+      className="relative"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={() => void onPointerEnd()}
       onPointerCancel={() => void onPointerEnd()}
     >
-      <div
-        className="pointer-events-none flex items-end justify-center overflow-hidden"
-        style={{ height: pull, transition: pullFrom.current === null ? 'height 240ms' : undefined }}
-      >
-        <Icon
-          name="refresh"
-          size={18}
-          className={clsx(
-            'mb-2 transition-colors',
-            refreshing && 'animate-spin',
-            armed ? 'text-ember-400' : 'text-ink-600',
-          )}
-          // Turns with the pull, so it is obvious the gesture is doing something before
-          // it has gone far enough to fire.
-          style={refreshing ? undefined : { transform: `rotate(${(pull / TRIGGER_PX) * 270}deg)` }}
-        />
+      {/* A clipping strip of its own, so the tucked-away disc never peeks over content. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-32 justify-center overflow-hidden">
+        <div
+          className="flex h-11 w-11 items-center justify-center self-start rounded-full bg-panel-800 shadow-lg shadow-black/50 ring-1 ring-panel-700"
+          style={{
+            transform: `translateY(${discY}px)`,
+            transition:
+              pullFrom.current === null || refreshing ? 'transform 220ms ease' : undefined,
+          }}
+        >
+          <Icon
+            name="refresh"
+            size={24}
+            className={clsx(
+              'transition-colors',
+              refreshing && 'animate-spin',
+              armed || refreshing ? 'text-ember-400' : 'text-ink-500',
+            )}
+            // Turns with the pull, so it is obvious the gesture is doing something
+            // before it has gone far enough to fire.
+            style={refreshing ? undefined : { transform: `rotate(${(pull / TRIGGER_PX) * 270}deg)` }}
+          />
+        </div>
       </div>
 
       {children}
