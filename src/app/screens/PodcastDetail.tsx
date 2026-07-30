@@ -6,6 +6,7 @@ import { db } from '@/data/db'
 import { Artwork, Button, Pill } from '@/ui/components'
 import { EpisodeRow } from '@/ui/EpisodeRow'
 import { Icon } from '@/ui/Icon'
+import { PullToRefresh } from '@/ui/PullToRefresh'
 import { subscribeToFeed, unsubscribeFromFeed } from '@/features/subscriptions/service'
 import { fetchFeed } from '@/features/feeds/refresh'
 
@@ -50,6 +51,7 @@ export function PodcastDetail() {
   const isSubscribed = Boolean(subscription)
 
   return (
+    <PullToRefresh onRefresh={async () => void (await fetchFeed(podcast.feedUrl))}>
     <div className="animate-rise pb-6">
       <div className="rack-texture flex items-center gap-1 border-b border-panel-800 px-2 py-2">
         <button
@@ -113,21 +115,6 @@ export function PodcastDetail() {
               Subscribe
             </Button>
           )}
-          <Button
-            variant="secondary"
-            icon="refresh"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true)
-              try {
-                await fetchFeed(podcast.feedUrl)
-              } finally {
-                setBusy(false)
-              }
-            }}
-          >
-            Refresh
-          </Button>
         </div>
 
         {podcast.lastFetchError && (
@@ -169,6 +156,7 @@ export function PodcastDetail() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   )
 }
 
