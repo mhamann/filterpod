@@ -24,15 +24,16 @@ const TABS: Array<{ to: string; label: string; icon: IconName }> = [
 ]
 
 export function App() {
-  const [ready, setReady] = useState(false)
   const [playerOpen, setPlayerOpen] = useState(false)
   const blockedReason = usePlayerStore((state) => state.blockedReason)
 
+  // Fire-and-forget: the shell renders immediately and startup work lands as it
+  // finishes. Screens tolerate a not-yet-initialized store (settings and profiles fall
+  // back to defaults), so there is nothing worth blocking first paint on — a second
+  // loading screen after the OS splash was pure dead time.
   useEffect(() => {
-    void bootstrap().finally(() => setReady(true))
+    void bootstrap()
   }, [])
-
-  if (!ready) return <Splash />
 
   return (
     <HashRouter>
@@ -133,13 +134,3 @@ function BlockedBanner({ reason }: { reason: string }) {
   )
 }
 
-function Splash() {
-  return (
-    <div className="relative z-[2] flex h-full flex-col items-center justify-center gap-4">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-ember-500 text-panel-950">
-        <Icon name="asterisk" size={30} />
-      </div>
-      <p className="silkscreen animate-pulse-ember">Starting up</p>
-    </div>
-  )
-}
