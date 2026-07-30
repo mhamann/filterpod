@@ -38,8 +38,9 @@ vi.mock('@/features/filter/transcript', async (importOriginal) => {
 const fetchTranscript = vi.fn<() => Promise<unknown>>()
 
 const putFilterMap = vi.fn(async () => {})
+const getFilterMap = vi.fn<() => Promise<unknown>>(async () => undefined)
 vi.mock('@/data/repo', () => ({
-  getFilterMap: async () => undefined,
+  getFilterMap: (...args: unknown[]) => getFilterMap(...(args as [])),
   putFilterMap: (...args: unknown[]) => putFilterMap(...(args as [])),
 }))
 
@@ -86,6 +87,8 @@ beforeEach(() => {
   transcribe.mockReset()
   transcribe.mockResolvedValue([])
   putFilterMap.mockClear()
+  getFilterMap.mockReset()
+  getFilterMap.mockResolvedValue(undefined)
   httpGet.mockReset()
   fetchTranscript.mockReset()
   fetchTranscript.mockResolvedValue(null)
@@ -516,5 +519,91 @@ describe('filtering disabled', () => {
     expect(spans).toEqual([])
     // Coverage spans the episode so the player imposes no restriction.
     expect(isAnalyzed(ranges, 3599)).toBe(true)
+  })
+
+  it('ignores stored spans and persists nothing, so no other profile inherits its coverage', async () => {
+    const off = DEFAULT_PROFILES.find((p) => p.id === 'off')!
+    // A map from an earlier session under a filtering profile: real spans, real coverage.
+    getFilterMap.mockResolvedValue({
+      episodeId: 'e1',
+      status: 'partial',
+      spans: [{ startSec: 10, endSec: 11, severity: 'strong', category: 'profanity' }],
+      analyzedRanges: [{ startSec: 0, endSec: 120 }],
+      source: 'asr',
+      engineVersion: (await import('@/data/defaults')).ENGINE_VERSION,
+      wordlistVersion: (await import('@/data/defaults')).WORDLIST_VERSION,
+      profileId: 'standard',
+      progress: 0.1,
+    })
+
+    const { spans } = await startLiveFilter({
+      ...baseOptions,
+      profile: off,
+      episode: episode(),
+      startAtSec: 0,
+      callbacks: { onUpdate: () => {}, onError: () => {} },
+    })
+    stopLiveFilter()
+
+    // Off means off: a span built under another profile must not keep cutting.
+    expect(spans).toEqual([])
+    // And nothing may be written: a persisted "fully analyzed, no spans" map would be
+    // believed by the next profile this show is switched to.
+    expect(putFilterMap).not.toHaveBeenCalled()
+  })
+})
+
+describe('per-profile maps', () => {
+  it('discards a stored map built under a different profile', async () => {
+    const defaults = await import('@/data/defaults')
+    getFilterMap.mockResolvedValue({
+      episodeId: 'e1',
+      status: 'partial',
+      spans: [{ startSec: 10, endSec: 11, severity: 'mild', category: 'blasphemy' }],
+      analyzedRanges: [{ startSec: 0, endSec: 1200 }],
+      source: 'asr',
+      engineVersion: defaults.ENGINE_VERSION,
+      wordlistVersion: defaults.WORDLIST_VERSION,
+      profileId: 'family',
+      progress: 0.33,
+    })
+
+    const { ranges, spans } = await startLiveFilter({
+      ...baseOptions,
+      episode: episode(),
+      startAtSec: 0,
+      callbacks: { onUpdate: () => {}, onError: () => {} },
+    })
+    stopLiveFilter()
+
+    // Family's coverage must not vouch for Standard: it flagged different words. The
+    // session starts over — old spans gone, coverage rebuilt from the playhead.
+    expect(spans.some((span) => span.startSec === 10)).toBe(false)
+    expect(analyzedUntil(ranges, 0)).toBeLessThan(1200)
+  })
+
+  it('keeps a stored map built under the same profile', async () => {
+    const defaults = await import('@/data/defaults')
+    getFilterMap.mockResolvedValue({
+      episodeId: 'e1',
+      status: 'partial',
+      spans: [{ startSec: 10, endSec: 11, severity: 'strong', category: 'profanity' }],
+      analyzedRanges: [{ startSec: 0, endSec: 1200 }],
+      source: 'asr',
+      engineVersion: defaults.ENGINE_VERSION,
+      wordlistVersion: defaults.WORDLIST_VERSION,
+      profileId: 'standard',
+      progress: 0.33,
+    })
+
+    const { spans } = await startLiveFilter({
+      ...baseOptions,
+      episode: episode(),
+      startAtSec: 0,
+      callbacks: { onUpdate: () => {}, onError: () => {} },
+    })
+    stopLiveFilter()
+
+    expect(spans.some((span) => span.startSec === 10)).toBe(true)
   })
 })

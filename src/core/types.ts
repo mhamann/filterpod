@@ -167,6 +167,14 @@ export interface FilterMap {
   /** Bumping either invalidates the map so it regenerates. */
   engineVersion: string
   wordlistVersion: string
+  /**
+   * Which profile the spans were built under. Spans are profile-dependent — Family
+   * flags words Standard leaves alone — so a map built under one profile is not a head
+   * start for another: reusing its coverage would leave newly-flaggable words standing
+   * in "analyzed" audio. A mismatch discards the map the same way an engine bump does.
+   * Absent on maps from before per-show profiles existed, which discards those too.
+   */
+  profileId?: string
   /** 0..1 while transcribing. */
   progress: number
   error?: string
