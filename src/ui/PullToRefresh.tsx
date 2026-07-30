@@ -39,6 +39,14 @@ const HAND_BACK_PX = 10
 /** How far above the top edge the indicator disc hides when idle. */
 const DISC_HIDDEN_PX = 56
 
+/**
+ * The least time the disc spins after release. A conditional refresh of one unchanged
+ * feed answers 304 in a couple hundred milliseconds — faster than the eye credits, so
+ * the gesture felt like it did nothing. The work is not slowed; the acknowledgement is
+ * held long enough to be seen.
+ */
+const MIN_SPIN_MS = 700
+
 /** Disc travel per damped pull pixel; >1 so the disc clears the edge before the trigger. */
 const INDICATOR_TRAVEL = 1.4
 
@@ -120,6 +128,9 @@ export function PullToRefresh({
     // Held at the trigger point while the work runs, so the spinner has somewhere to be.
     setRefreshing(true)
     setPull(TRIGGER_PX)
+    // Started before the work and awaited in finally, so success and failure alike
+    // hold the spinner long enough to read.
+    const minSpin = new Promise((resolve) => setTimeout(resolve, MIN_SPIN_MS))
     try {
       await onRefresh()
     } catch {
@@ -128,6 +139,7 @@ export function PullToRefresh({
       // than left to reject, which would surface as an unhandled rejection and nothing
       // more useful than that.
     } finally {
+      await minSpin
       setRefreshing(false)
       setPull(0)
     }
