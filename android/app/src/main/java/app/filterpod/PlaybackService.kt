@@ -1,6 +1,7 @@
 package app.filterpod
 
 import android.content.Intent
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.ForwardingPlayer
@@ -11,7 +12,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
 
 /**
  * Playback, running as a foreground service.
@@ -45,6 +49,33 @@ class PlaybackService : MediaSessionService() {
     private var skippedMs: Long = 0
 
     /**
+     * Analyzed coverage, for the native frontier backstop.
+     *
+     * The real frontier guard lives in the web layer, which also knows how to catch up
+     * and resume. But the OS reclaims the WebView independently of this service, and a
+     * dead guard must not mean unfiltered audio: with the ranges mirrored here, the
+     * ticker pauses at the edge of coverage even with no web layer alive. The margin is
+     * deliberately smaller than the web guard's, so when both are alive the web one —
+     * the one that can resume — always fires first.
+     */
+    private var analyzed: List<LongRange> = emptyList()
+
+    /** Which episode is loaded, so position can be journaled against it. */
+    var currentEpisodeId: String? = null
+        private set
+
+    /**
+     * When playback last stopped being audible, for the resume rewind.
+     *
+     * Recorded only when playWhenReady is false — a buffering stall is not a pause, and
+     * rewinding after one would punish a bad connection twice.
+     */
+    private var pausedAtMs: Long = 0
+
+    /** Wall-clock time of the last position journal write. */
+    private var lastJournalAt = 0L
+
+    /**
      * Skip increments for the notification and lock-screen buttons.
      *
      * Live values, not constructor arguments: they come from a user setting that can
@@ -70,6 +101,7 @@ class PlaybackService : MediaSessionService() {
             if (active != null) {
                 // Skips are checked every tick — that precision is the whole point.
                 applySkips(active)
+                holdAtFrontier(active)
 
                 // Status is not. Emitting at 20ms meant ~50 bridge crossings a second
                 // for a UI that shows whole seconds; 5/s is plenty and far cheaper.
@@ -78,9 +110,28 @@ class PlaybackService : MediaSessionService() {
                     lastStatusAt = now
                     emitStatus(active)
                 }
+
+                // The WebView's own progress saves freeze the moment it is backgrounded,
+                // which used to mean a resume after a background pause landed wherever the
+                // app was last on screen. The service journals position itself so the web
+                // layer has something true to reconcile against.
+                if (active.isPlaying && now - lastJournalAt >= JOURNAL_INTERVAL_MS) {
+                    lastJournalAt = now
+                    journalPosition(active)
+                }
             }
             handler.postDelayed(this, tickMs)
         }
+    }
+
+    /** Persists (episode, position) so it survives both the WebView and this service. */
+    private fun journalPosition(exo: ExoPlayer) {
+        val episodeId = currentEpisodeId ?: return
+        getSharedPreferences(JOURNAL_PREFS, MODE_PRIVATE).edit()
+            .putString("episodeId", episodeId)
+            .putLong("positionMs", exo.currentPosition)
+            .putLong("updatedAt", System.currentTimeMillis())
+            .apply()
     }
 
     /*
@@ -117,10 +168,18 @@ class PlaybackService : MediaSessionService() {
 
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) = emitStatus(exo)
-            override fun onIsPlayingChanged(isPlaying: Boolean) = emitStatus(exo)
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!isPlaying && !exo.playWhenReady) {
+                    // A genuine pause, whatever pressed it — earbud, notification, UI.
+                    pausedAtMs = System.currentTimeMillis()
+                    journalPosition(exo)
+                }
+                emitStatus(exo)
+            }
         })
 
         session = MediaSession.Builder(this, SkipPlayer(exo))
+            .setCallback(SkipCallback())
             .setMediaButtonPreferences(skipButtons())
             .build().also {
             // Registering the session is what hands Media3 responsibility for the media
@@ -137,7 +196,7 @@ class PlaybackService : MediaSessionService() {
         // block the caller or drop them, they are parked and applied here.
         pendingLoad?.let { request ->
             pendingLoad = null
-            load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs)
+            load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs, request.episodeId)
         }
         if (pendingPlay) {
             pendingPlay = false
@@ -164,6 +223,24 @@ class PlaybackService : MediaSessionService() {
                 "decided at ${position}ms, ${span.startMs - position}ms early",
         )
         listener?.onSkip(span)
+    }
+
+    /** The native backstop: never play past the end of analyzed coverage. */
+    private fun holdAtFrontier(exo: ExoPlayer) {
+        if (analyzed.isEmpty() || !exo.isPlaying) return
+        val position = exo.currentPosition
+        val frontierMs = analyzed.firstOrNull { position in it }?.last
+            ?: position // outside all coverage: the frontier is here, pause now
+
+        val duration = exo.duration
+        val atEnd = duration > 0 && frontierMs >= duration - FRONTIER_MARGIN_MS
+        if (!atEnd && position >= frontierMs - FRONTIER_MARGIN_MS) {
+            android.util.Log.i(
+                "FilterPod",
+                "frontier hold at ${position}ms (coverage ends ${frontierMs}ms)",
+            )
+            exo.pause()
+        }
     }
 
     private fun emitStatus(exo: ExoPlayer) {
@@ -197,9 +274,11 @@ class PlaybackService : MediaSessionService() {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else handler.post { block() }
     }
 
-    fun load(url: String, title: String, artist: String, artworkUrl: String?, startAtMs: Long) = onMain {
+    fun load(url: String, title: String, artist: String, artworkUrl: String?, startAtMs: Long, episodeId: String? = null) = onMain {
         val exo = player ?: return@onMain
         skippedMs = 0
+        currentEpisodeId = episodeId
+        pausedAtMs = 0
 
         // The URI and whether it actually resolves. "Source error" from ExoPlayer says
         // nothing about which of those two failed.
@@ -224,23 +303,50 @@ class PlaybackService : MediaSessionService() {
     }
 
     /** Also main-thread: the ticker reads this list, so writing it elsewhere races. */
-    fun setSpans(next: List<FilterSpan>) = onMain {
+    fun setSpans(next: List<FilterSpan>, analyzedRanges: List<LongRange>? = null) = onMain {
         // Logged because "the UI counted cuts but nothing was skipped" is otherwise
         // indistinguishable from "the spans never arrived", and they have different fixes.
-        android.util.Log.i("FilterPod", "setSpans: ${next.size} span(s)")
+        android.util.Log.i("FilterPod", "setSpans: ${next.size} span(s), ${analyzedRanges?.size ?: 0} analyzed range(s)")
         spans = next
+        analyzedRanges?.let { analyzed = it }
     }
 
     fun play() = onMain {
-        player?.play()
+        val exo = player ?: return@onMain
+        applyResumeRewind(exo)
+        exo.play()
     }
 
     fun pause() = onMain {
         player?.pause()
     }
 
+    /**
+     * Rewinds a little on resume after a real break, so the listener gets a running
+     * start back into the sentence instead of a cold mid-word entry. Ten seconds after
+     * a couple of minutes away, fifteen after half an hour — and never more, because a
+     * resume point that drifts backwards stops being trustworthy.
+     *
+     * The rewound stretch was already analyzed (it was just played), so this cannot
+     * carry the playhead into unfiltered audio.
+     */
+    private fun applyResumeRewind(exo: ExoPlayer) {
+        if (pausedAtMs == 0L || exo.isPlaying) return
+        val away = System.currentTimeMillis() - pausedAtMs
+        pausedAtMs = 0
+        val rewind = when {
+            away >= LONG_BREAK_MS -> 15_000L
+            away >= SHORT_BREAK_MS -> 10_000L
+            else -> return
+        }
+        exo.seekTo((exo.currentPosition - rewind).coerceAtLeast(0))
+    }
+
     fun seekTo(positionMs: Long) = onMain {
         val exo = player ?: return@onMain
+        // An explicit seek is the user choosing a position; resuming later must not
+        // second-guess it with a rewind.
+        pausedAtMs = 0
         exo.seekTo(positionMs)
         // A scrub can land inside a flagged span; resolve it now rather than waiting
         // for the next tick, which would play a fragment of it.
@@ -278,28 +384,62 @@ class PlaybackService : MediaSessionService() {
     /**
      * The two buttons that replace Media3's defaults in the notification.
      *
-     * `DefaultMediaNotificationProvider` fills the slots either side of play/pause from
-     * the media button preferences, falling back to previous/next track only when nothing
-     * claims [CommandButton.SLOT_BACK] and [CommandButton.SLOT_FORWARD]. Previous/next is
-     * the wrong idiom for a podcast — there is no queue, and a single ±30s jump is what
-     * the content is actually navigated by.
+     * Bound to CUSTOM session commands, not to COMMAND_SEEK_BACK/FORWARD, and that
+     * distinction is the whole bug it fixes: on Android 13+ the notification is drawn
+     * by System UI from the platform MediaSession, which renders play/pause plus
+     * *custom actions* and simply ignores the standard rewind/fast-forward actions a
+     * player command maps to. (Verified against Pocket Casts on a Pixel: its notification
+     * skip buttons are custom actions named "Skip back"/"Skip forward".) The slots still
+     * matter pre-13, where Media3's own notification provider fills them directly.
      *
-     * Binding them to player commands rather than session commands means Media3 dispatches
-     * them itself, so they also work from Bluetooth controls, Android Auto and Wear
-     * without any of this class being involved.
+     * Bluetooth and headset skips never see these buttons — they arrive as media-key
+     * seek commands and are handled by [SkipPlayer].
      */
     private fun skipButtons(): ImmutableList<CommandButton> = ImmutableList.of(
         CommandButton.Builder(backIcon(skipBackMs))
-            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+            .setSessionCommand(SessionCommand(COMMAND_SKIP_BACK, Bundle.EMPTY))
             .setSlots(CommandButton.SLOT_BACK)
             .setDisplayName("Skip back ${skipBackMs / 1000} seconds")
             .build(),
         CommandButton.Builder(forwardIcon(skipForwardMs))
-            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+            .setSessionCommand(SessionCommand(COMMAND_SKIP_FORWARD, Bundle.EMPTY))
             .setSlots(CommandButton.SLOT_FORWARD)
             .setDisplayName("Skip forward ${skipForwardMs / 1000} seconds")
             .build(),
     )
+
+    /** Accepts the custom skip commands and dispatches them through the filtered seek. */
+    private inner class SkipCallback : MediaSession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult =
+            MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(SessionCommand(COMMAND_SKIP_BACK, Bundle.EMPTY))
+                        .add(SessionCommand(COMMAND_SKIP_FORWARD, Bundle.EMPTY))
+                        .build(),
+                )
+                .build()
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ) = when (customCommand.customAction) {
+            COMMAND_SKIP_BACK -> {
+                seekRelative(-skipBackMs)
+                Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            COMMAND_SKIP_FORWARD -> {
+                seekRelative(skipForwardMs)
+                Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            else -> Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        }
+    }
 
     /**
      * Presents the configured increments to everything outside this service.
@@ -315,6 +455,45 @@ class PlaybackService : MediaSessionService() {
         override fun getSeekForwardIncrement(): Long = skipForwardMs
         override fun seekBack() { seekRelative(-skipBackMs) }
         override fun seekForward() { seekRelative(skipForwardMs) }
+        // Resumes from the notification, lock screen and Bluetooth route through the
+        // same rewind-on-resume as the in-app button.
+        override fun play() { this@PlaybackService.play() }
+    }
+
+    /** What [snapshot] answers with. Null episodeId cases resolve to a null snapshot. */
+    data class Snapshot(
+        val episodeId: String,
+        val state: String,
+        val positionMs: Long,
+        val durationMs: Long,
+        val skippedMs: Long,
+    )
+
+    /**
+     * Current playback identity and position, for the web layer to reattach against.
+     * Asynchronous because ExoPlayer may only be read on its own thread; always calls
+     * back exactly once, with null when nothing is loaded.
+     */
+    fun snapshot(onResult: (Snapshot?) -> Unit) {
+        onMain {
+            val exo = player
+            val episodeId = currentEpisodeId
+            if (exo == null || episodeId == null) {
+                onResult(null)
+                return@onMain
+            }
+            val state = when {
+                exo.playerError != null -> "error"
+                exo.playbackState == Player.STATE_BUFFERING -> "loading"
+                exo.playbackState == Player.STATE_ENDED -> "ended"
+                exo.isPlaying -> "playing"
+                exo.playbackState == Player.STATE_READY -> "paused"
+                else -> "idle"
+            }
+            onResult(
+                Snapshot(episodeId, state, exo.currentPosition, if (exo.duration > 0) exo.duration else 0, skippedMs),
+            )
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -328,6 +507,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        // The last position must outlive the service, or a kill while paused loses it.
+        player?.let { journalPosition(it) }
         handler.removeCallbacks(ticker)
         session?.release()
         player?.release()
@@ -355,6 +536,28 @@ class PlaybackService : MediaSessionService() {
         /** Status updates to the WebView. The UI shows whole seconds. */
         private const val STATUS_INTERVAL_MS = 200L
 
+        /** Where the native position journal lives. Read by [FilterPlayerPlugin]. */
+        const val JOURNAL_PREFS = "filterpod_playback"
+
+        /** Position journal cadence. Matches the web layer's own save interval. */
+        private const val JOURNAL_INTERVAL_MS = 5_000L
+
+        /** Away this long, resume rewinds 10s; less and it resumes exactly in place. */
+        private const val SHORT_BREAK_MS = 2 * 60_000L
+
+        /** Away this long, resume rewinds the full 15s. */
+        private const val LONG_BREAK_MS = 30 * 60_000L
+
+        /** Custom session commands for the notification skip buttons. */
+        const val COMMAND_SKIP_BACK = "app.filterpod.SKIP_BACK"
+        const val COMMAND_SKIP_FORWARD = "app.filterpod.SKIP_FORWARD"
+
+        /**
+         * Native frontier margin. Half the web guard's two seconds, so the web layer —
+         * which can catch up and auto-resume — always pauses first when it is alive.
+         */
+        private const val FRONTIER_MARGIN_MS = 1_000L
+
         /** A load requested before the service finished starting. */
         data class LoadRequest(
             val url: String,
@@ -362,6 +565,7 @@ class PlaybackService : MediaSessionService() {
             val artist: String,
             val artworkUrl: String?,
             val startAtMs: Long,
+            val episodeId: String? = null,
         )
 
         @Volatile

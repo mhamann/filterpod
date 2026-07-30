@@ -7,7 +7,7 @@
  * directly — that is what keeps the whole app developable in a browser.
  */
 
-import type { FilterSpan, TimedWord } from '@/core/types'
+import type { AnalyzedRange, FilterSpan, TimedWord } from '@/core/types'
 
 // ---------------------------------------------------------------------------
 // HTTP
@@ -127,8 +127,30 @@ export interface PlayerStatus {
   error?: string
 }
 
+/**
+ * What the platform's player is doing right now, independent of this page's lifetime.
+ *
+ * On Android the playback service outlives the WebView, so a freshly loaded page may
+ * find audio already playing (`running: true` — reattach to it) or find the record of a
+ * session that ended while the page was away (`lastSaved` — reconcile stored progress
+ * against it). In the browser the player dies with the page, so it is never `running`
+ * at startup.
+ */
+export interface PlayerSnapshot {
+  running: boolean
+  episodeId?: string
+  state?: PlayerStatus['state']
+  positionSec?: number
+  durationSec?: number
+  skippedSec?: number
+  /** The platform's own last position journal, written independently of the web layer. */
+  lastSaved?: { episodeId: string; positionSec: number; updatedAt: number }
+}
+
 export interface PlayerPlatform {
   load(track: PlayerTrack, startAtSec: number): Promise<void>
+  /** See [PlayerSnapshot]. Safe to call any time; never starts anything. */
+  getState(): Promise<PlayerSnapshot>
   play(): Promise<void>
   pause(): Promise<void>
   /** Seeks on the original timeline. */
@@ -138,8 +160,14 @@ export interface PlayerPlatform {
    * Installs the spans to skip. On Android these are evaluated on a native handler
    * so skipping keeps working with the screen off; the web impl uses rAF and is
    * therefore foreground-only.
+   *
+   * `analyzedRanges`, when given, arms a native backstop for the frontier rule: the
+   * platform pauses rather than play past the end of analyzed coverage. The primary
+   * guard lives in the web layer, but that guard dies whenever the OS reclaims the
+   * WebView while the service plays on — and "unanalyzed is unknown, not clean" has to
+   * hold even then.
    */
-  setFilterSpans(spans: FilterSpan[]): Promise<void>
+  setFilterSpans(spans: FilterSpan[], analyzedRanges?: AnalyzedRange[]): Promise<void>
   /**
    * Sets the increments used by the OS-level skip controls — the notification and
    * lock-screen buttons on Android, the Media Session action handlers in a browser.

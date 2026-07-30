@@ -79,12 +79,13 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
             artist = call.getString("artist") ?: "",
             artworkUrl = call.getString("artworkUrl"),
             startAtMs = startAtMs,
+            episodeId = call.getString("episodeId"),
         )
 
         val running = service()
         if (running != null) {
             running.listener = this
-            running.load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs)
+            running.load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs, request.episodeId)
         } else {
             // Park it: the service applies this in onCreate. Waiting here instead would
             // block the bridge thread on an asynchronous service start.
@@ -141,7 +142,60 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
     fun setFilterSpans(call: PluginCall) {
         val array = call.getArray("spans")
         val spans = if (array == null) emptyList() else FilterSpan.fromJson(array)
-        withService(call, start = false) { it.setSpans(spans) }
+        val analyzed = call.getArray("analyzed")?.toList<org.json.JSONObject>()?.map {
+            val startMs = (it.getDouble("startSec") * 1000).toLong()
+            val endMs = (it.getDouble("endSec") * 1000).toLong()
+            startMs..endMs
+        }
+        withService(call, start = false) { it.setSpans(spans, analyzed) }
+    }
+
+    /**
+     * What is actually happening in the playback service, if anything.
+     *
+     * The WebView dies and reloads independently of the service — Android reclaims it
+     * for memory, the user swipes the task — and a fresh page has no idea audio is
+     * already playing. This answers that: a live snapshot when the service is up
+     * (re-registering this plugin as its listener, which is what reattaches the event
+     * stream), or the last journaled position when it is not, so the web layer can
+     * resume from where playback really was rather than from its own stale record.
+     */
+    @PluginMethod
+    fun getState(call: PluginCall) {
+        val running = service()
+        if (running != null && running.currentEpisodeId != null) {
+            running.listener = this
+            running.snapshot { snap ->
+                if (snap == null) {
+                    call.resolve(lastJournaled())
+                } else {
+                    call.resolve(
+                        JSObject()
+                            .put("running", true)
+                            .put("episodeId", snap.episodeId)
+                            .put("state", snap.state)
+                            .put("positionSec", snap.positionMs / 1000.0)
+                            .put("durationSec", snap.durationMs / 1000.0)
+                            .put("skippedSec", snap.skippedMs / 1000.0),
+                    )
+                }
+            }
+            return
+        }
+        call.resolve(lastJournaled())
+    }
+
+    private fun lastJournaled(): JSObject {
+        val result = JSObject().put("running", false)
+        val prefs = context.getSharedPreferences(PlaybackService.JOURNAL_PREFS, android.content.Context.MODE_PRIVATE)
+        val episodeId = prefs.getString("episodeId", null) ?: return result
+        return result.put(
+            "lastSaved",
+            JSObject()
+                .put("episodeId", episodeId)
+                .put("positionSec", prefs.getLong("positionMs", 0) / 1000.0)
+                .put("updatedAt", prefs.getLong("updatedAt", 0)),
+        )
     }
 
     @PluginMethod

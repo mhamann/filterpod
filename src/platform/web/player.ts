@@ -134,11 +134,25 @@ export function createWebPlayer(): PlayerPlatform {
   })
   audio.addEventListener('loadedmetadata', emit)
 
+  let loadedEpisodeId: string | undefined
+
   return {
+    /**
+     * The browser player lives and dies with the page, so a fresh page never finds it
+     * running and there is no out-of-page journal to hand back — the reattach machinery
+     * this serves is an Android concern.
+     */
+    async getState() {
+      return loadedEpisodeId && state !== 'idle'
+        ? { running: true, episodeId: loadedEpisodeId, ...status() }
+        : { running: false }
+    },
+
     async load(track: PlayerTrack, startAtSec: number) {
       lastError = undefined
       skippedSec = 0
       state = 'loading'
+      loadedEpisodeId = track.episodeId
       // Local object URLs are already same-origin; only remote streams need the passthrough.
       audio.src = track.url.startsWith('blob:') ? track.url : resolveFetchUrl(track.url)
       audio.load()
