@@ -235,6 +235,10 @@ function AutoDownloadControl({
  * cost: coverage from one profile cannot vouch for another's words.
  */
 function FilteringControl({ podcastId, overrideId }: { podcastId: string; overrideId?: string }) {
+  // Collapsed by default: this is a set-once escape hatch for shows the wordlist
+  // misreads, not a control anyone adjusts weekly. The closed row still names the
+  // effective setting, so an active override is never invisible — quiet, not hidden.
+  const [open, setOpen] = useState(false)
   const profiles = useLiveQuery(() => db.filterProfiles.toArray(), [], [])
   const settings = useLiveQuery(() => db.settings.get('singleton'), [])
 
@@ -245,35 +249,59 @@ function FilteringControl({ podcastId, overrideId }: { podcastId: string; overri
       (ORDER.indexOf(a.id) + 1 || ORDER.length + 1) - (ORDER.indexOf(b.id) + 1 || ORDER.length + 1),
   )
   const appDefault = profiles.find((profile) => profile.id === settings?.activeFilterProfileId)
+  const overrideName = ordered.find((profile) => profile.id === overrideId)?.name ?? overrideId
 
   return (
-    <div className="mx-4 mb-4 rounded-xl bg-panel-850 px-4 py-3 ring-1 ring-panel-700">
-      <p className="text-[13px] font-medium">Filtering for this show</p>
-      <p className="mt-0.5 text-[11px] text-ink-600">
-        {overrideId
-          ? overrideId === 'off'
-            ? 'Off — episodes play exactly as published.'
-            : `Uses ${ordered.find((p) => p.id === overrideId)?.name ?? overrideId} instead of the app setting.`
-          : `Follows the app setting${appDefault ? ` (${appDefault.name})` : ''}.`}
-      </p>
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
-        <ProfilePill
-          label="Default"
-          selected={!overrideId}
-          onSelect={() => void db.subscriptions.update(podcastId, { filterProfileId: undefined })}
-        />
-        {ordered.map((profile) => (
-          <ProfilePill
-            key={profile.id}
-            label={profile.name}
-            selected={overrideId === profile.id}
-            onSelect={() => void db.subscriptions.update(podcastId, { filterProfileId: profile.id })}
+    <div className="mx-4 mb-4 rounded-xl bg-panel-850 ring-1 ring-panel-700">
+      <button
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="focus-ring flex w-full items-center justify-between px-4 py-3 text-left"
+      >
+        <span className="text-[13px] font-medium">Filtering</span>
+        <span className="flex items-center gap-1.5">
+          <span className={`text-[12px] ${overrideId ? 'text-ember-300' : 'text-ink-600'}`}>
+            {overrideId ? overrideName : (appDefault?.name ?? 'Default')}
+          </span>
+          <Icon
+            name="chevronDown"
+            size={14}
+            className={`text-ink-600 transition-transform ${open ? 'rotate-180' : ''}`}
           />
-        ))}
-      </div>
-      <p className="mt-2 text-[11px] leading-snug text-ink-600">
-        Applies from the next episode you play.
-      </p>
+        </span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-3">
+          <p className="text-[11px] text-ink-600">
+            {overrideId
+              ? overrideId === 'off'
+                ? 'Off — episodes of this show play exactly as published.'
+                : `This show uses ${overrideName} instead of the app setting.`
+              : `Follows the app setting${appDefault ? ` (${appDefault.name})` : ''}.`}
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            <ProfilePill
+              label="Default"
+              selected={!overrideId}
+              onSelect={() => void db.subscriptions.update(podcastId, { filterProfileId: undefined })}
+            />
+            {ordered.map((profile) => (
+              <ProfilePill
+                key={profile.id}
+                label={profile.name}
+                selected={overrideId === profile.id}
+                onSelect={() =>
+                  void db.subscriptions.update(podcastId, { filterProfileId: profile.id })
+                }
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-ink-600">
+            Applies from the next episode you play.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
