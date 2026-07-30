@@ -219,18 +219,6 @@ function NewEpisodeControls({
     <div className="mx-4 mb-4 rounded-xl bg-panel-850 ring-1 ring-panel-700">
       <div className="flex items-center justify-between px-4 py-3">
         <div>
-          <p className="text-[13px] font-medium">Auto-download new episodes</p>
-          <p className="text-[11px] text-ink-600">
-            {autoDownload ? `Keeps the latest ${downloadLimit} filtered and ready` : 'Off'}
-          </p>
-        </div>
-        <Toggle
-          checked={autoDownload}
-          onChange={(next) => void db.subscriptions.update(podcastId, { autoDownload: next })}
-        />
-      </div>
-      <div className="flex items-center justify-between border-t border-panel-700/60 px-4 py-3">
-        <div>
           <p className="text-[13px] font-medium">Add new episodes to queue</p>
           <p className="text-[11px] text-ink-600">
             {autoQueue ? 'New episodes join the end of your queue' : 'Off'}
@@ -239,6 +227,18 @@ function NewEpisodeControls({
         <Toggle
           checked={autoQueue}
           onChange={(next) => void db.subscriptions.update(podcastId, { autoQueue: next })}
+        />
+      </div>
+      <div className="flex items-center justify-between border-t border-panel-700/60 px-4 py-3">
+        <div>
+          <p className="text-[13px] font-medium">Auto-download new episodes</p>
+          <p className="text-[11px] text-ink-600">
+            {autoDownload ? `Keeps the latest ${downloadLimit} filtered and ready` : 'Off'}
+          </p>
+        </div>
+        <Toggle
+          checked={autoDownload}
+          onChange={(next) => void db.subscriptions.update(podcastId, { autoDownload: next })}
         />
       </div>
     </div>
