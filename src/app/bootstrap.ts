@@ -26,34 +26,6 @@ import { usePlayerStore } from '@/features/player/playerStore'
  * see `features/filter/liveFilter.ts`.
  */
 /**
- * Evicts a service worker left behind by an earlier build.
- *
- * Packaged builds no longer ship one, but any device that ran an older APK still has it
- * installed and serving a cached app shell — which means a freshly installed APK keeps
- * running the previous bundle. Unregistering is not enough on its own; its caches hold
- * the stale assets, so those go too, and the page is reloaded to pick up the real ones.
- */
-async function evictStaleServiceWorker(): Promise<boolean> {
-  if (!('serviceWorker' in navigator)) return false
-  try {
-    const registrations = await navigator.serviceWorker.getRegistrations()
-    if (registrations.length === 0) return false
-
-    await Promise.all(registrations.map((registration) => registration.unregister()))
-    if (typeof caches !== 'undefined') {
-      const names = await caches.keys()
-      // The transformers.js model cache is expensive to refill and is not app code.
-      await Promise.all(
-        names.filter((name) => name !== 'transformers-cache').map((name) => caches.delete(name)),
-      )
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
  * Keeps the OS media controls' skip increments in step with the setting.
  *
  * The in-app buttons read the setting on every press, but the notification and
@@ -78,12 +50,11 @@ export async function bootstrap(): Promise<void> {
     location.hash = '#/import'
   }
 
-  if (getPlatform().name === 'android' && (await evictStaleServiceWorker())) {
-    // Reload once so the WebView loads assets from the APK rather than the dead cache.
-    location.reload()
-    // Never resolves; the reload replaces this context.
-    await new Promise(() => {})
-  }
+  // Stale service workers from old builds are evicted natively, before the WebView even
+  // starts (MainActivity.evictServiceWorker) — the right side of the fence, since JS
+  // running under a stale worker is the wrong bundle already. A JS-side eviction used to
+  // live here too and reloaded the page when it thought it saw a registration; on some
+  // launches that turned into a reload loop wearing the startup screen.
 
   await initializeStore()
 
