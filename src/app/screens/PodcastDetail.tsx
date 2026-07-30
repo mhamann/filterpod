@@ -141,10 +141,11 @@ export function PodcastDetail() {
 
       {isSubscribed && (
         <>
-          <AutoDownloadControl
+          <NewEpisodeControls
             podcastId={podcastId}
-            enabled={subscription!.autoDownload}
-            limit={subscription!.autoDownloadLimit}
+            autoDownload={subscription!.autoDownload}
+            downloadLimit={subscription!.autoDownloadLimit}
+            autoQueue={Boolean(subscription!.autoQueue)}
           />
           <FilteringControl podcastId={podcastId} overrideId={subscription!.filterProfileId} />
         </>
@@ -197,27 +198,49 @@ function Description({ text }: { text: string }) {
   )
 }
 
-function AutoDownloadControl({
+/**
+ * What happens when this show publishes: nothing (just listed), download, and/or join
+ * the queue. Two toggles rather than a follow/subscribe split — the distinction people
+ * mean by those words is exactly the queue behaviour, and a toggle expresses it without
+ * a second subscription concept leaking into every button and import path.
+ */
+function NewEpisodeControls({
   podcastId,
-  enabled,
-  limit,
+  autoDownload,
+  downloadLimit,
+  autoQueue,
 }: {
   podcastId: string
-  enabled: boolean
-  limit: number
+  autoDownload: boolean
+  downloadLimit: number
+  autoQueue: boolean
 }) {
   return (
-    <div className="mx-4 mb-4 flex items-center justify-between rounded-xl bg-panel-850 px-4 py-3 ring-1 ring-panel-700">
-      <div>
-        <p className="text-[13px] font-medium">Auto-download new episodes</p>
-        <p className="text-[11px] text-ink-600">
-          {enabled ? `Keeps the latest ${limit} filtered and ready` : 'Off'}
-        </p>
+    <div className="mx-4 mb-4 rounded-xl bg-panel-850 ring-1 ring-panel-700">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div>
+          <p className="text-[13px] font-medium">Auto-download new episodes</p>
+          <p className="text-[11px] text-ink-600">
+            {autoDownload ? `Keeps the latest ${downloadLimit} filtered and ready` : 'Off'}
+          </p>
+        </div>
+        <Toggle
+          checked={autoDownload}
+          onChange={(next) => void db.subscriptions.update(podcastId, { autoDownload: next })}
+        />
       </div>
-      <Toggle
-        checked={enabled}
-        onChange={(next) => void db.subscriptions.update(podcastId, { autoDownload: next })}
-      />
+      <div className="flex items-center justify-between border-t border-panel-700/60 px-4 py-3">
+        <div>
+          <p className="text-[13px] font-medium">Add new episodes to queue</p>
+          <p className="text-[11px] text-ink-600">
+            {autoQueue ? 'New episodes join the end of your queue' : 'Off'}
+          </p>
+        </div>
+        <Toggle
+          checked={autoQueue}
+          onChange={(next) => void db.subscriptions.update(podcastId, { autoQueue: next })}
+        />
+      </div>
     </div>
   )
 }
