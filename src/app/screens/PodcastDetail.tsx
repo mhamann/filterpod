@@ -140,11 +140,14 @@ export function PodcastDetail() {
       </header>
 
       {isSubscribed && (
-        <AutoDownloadControl
-          podcastId={podcastId}
-          enabled={subscription!.autoDownload}
-          limit={subscription!.autoDownloadLimit}
-        />
+        <>
+          <AutoDownloadControl
+            podcastId={podcastId}
+            enabled={subscription!.autoDownload}
+            limit={subscription!.autoDownloadLimit}
+          />
+          <FilteringControl podcastId={podcastId} overrideId={subscription!.filterProfileId} />
+        </>
       )}
 
       <div className="border-t border-panel-800">
@@ -216,6 +219,86 @@ function AutoDownloadControl({
         onChange={(next) => void db.subscriptions.update(podcastId, { autoDownload: next })}
       />
     </div>
+  )
+}
+
+/**
+ * Per-show filter level, overriding the app-wide setting.
+ *
+ * This exists for shows where the wordlist misfires on context — sermons and Bible
+ * podcasts trip the blasphemy category with entirely reverent speech. The override
+ * lives on the subscription, so it applies to every episode of the show and survives
+ * refreshes; "Default" clears it and the show follows the app setting again.
+ *
+ * Spans are built per profile, so switching invalidates the show's existing filter
+ * maps — episodes re-analyze under the new profile as they play. That is the honest
+ * cost: coverage from one profile cannot vouch for another's words.
+ */
+function FilteringControl({ podcastId, overrideId }: { podcastId: string; overrideId?: string }) {
+  const profiles = useLiveQuery(() => db.filterProfiles.toArray(), [], [])
+  const settings = useLiveQuery(() => db.settings.get('singleton'), [])
+
+  // Seeded order, not table order: strictest to off, with Default leading.
+  const ORDER = ['family', 'standard', 'strong-only', 'off']
+  const ordered = [...profiles].sort(
+    (a, b) =>
+      (ORDER.indexOf(a.id) + 1 || ORDER.length + 1) - (ORDER.indexOf(b.id) + 1 || ORDER.length + 1),
+  )
+  const appDefault = profiles.find((profile) => profile.id === settings?.activeFilterProfileId)
+
+  return (
+    <div className="mx-4 mb-4 rounded-xl bg-panel-850 px-4 py-3 ring-1 ring-panel-700">
+      <p className="text-[13px] font-medium">Filtering for this show</p>
+      <p className="mt-0.5 text-[11px] text-ink-600">
+        {overrideId
+          ? overrideId === 'off'
+            ? 'Off — episodes play exactly as published.'
+            : `Uses ${ordered.find((p) => p.id === overrideId)?.name ?? overrideId} instead of the app setting.`
+          : `Follows the app setting${appDefault ? ` (${appDefault.name})` : ''}.`}
+      </p>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        <ProfilePill
+          label="Default"
+          selected={!overrideId}
+          onSelect={() => void db.subscriptions.update(podcastId, { filterProfileId: undefined })}
+        />
+        {ordered.map((profile) => (
+          <ProfilePill
+            key={profile.id}
+            label={profile.name}
+            selected={overrideId === profile.id}
+            onSelect={() => void db.subscriptions.update(podcastId, { filterProfileId: profile.id })}
+          />
+        ))}
+      </div>
+      <p className="mt-2 text-[11px] leading-snug text-ink-600">
+        Applies from the next episode you play.
+      </p>
+    </div>
+  )
+}
+
+function ProfilePill({
+  label,
+  selected,
+  onSelect,
+}: {
+  label: string
+  selected: boolean
+  onSelect(): void
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`focus-ring rounded-full px-3 py-1.5 text-[12px] ring-1 transition-colors ${
+        selected
+          ? 'bg-ember-500/15 text-ember-300 ring-ember-500/40'
+          : 'bg-panel-900 text-ink-500 ring-panel-700'
+      }`}
+    >
+      {label}
+    </button>
   )
 }
 

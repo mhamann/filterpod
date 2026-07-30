@@ -223,13 +223,16 @@ export async function startLiveFilter(options: {
 
   stopLiveFilter()
   const stored = await getFilterMap(episode.id)
-  // A map from an older engine or wordlist is not a head start, it is a liability:
-  // v1 maps can claim coverage over audio that was never examined. Discard rather
-  // than inherit — coverage rebuilds while the episode plays anyway.
+  // A map from an older engine, wordlist or *profile* is not a head start, it is a
+  // liability: v1 maps can claim coverage over audio that was never examined, and a
+  // map built under another profile has different words flagged — its coverage would
+  // vouch for audio this profile never looked at. Discard rather than inherit —
+  // coverage rebuilds while the episode plays anyway.
   const existing =
     stored &&
     stored.engineVersion === ENGINE_VERSION &&
-    stored.wordlistVersion === WORDLIST_VERSION
+    stored.wordlistVersion === WORDLIST_VERSION &&
+    stored.profileId === options.profile.id
       ? stored
       : undefined
 
@@ -255,16 +258,19 @@ export async function startLiveFilter(options: {
   }
   active = session
 
+  if (session.profile.severities.length === 0) {
+    // Filtering is off: no cuts, and playback unrestricted. Checked before the
+    // transcript shortcut, which persists — and nothing here may persist: a map
+    // claiming full analyzed coverage with no spans would be believed by the next
+    // profile the show is switched to, vouching for audio nobody examined.
+    session.spans = []
+    session.ranges = [{ startSec: 0, endSec: session.durationSec || Number.MAX_SAFE_INTEGER }]
+    return { spans: session.spans, ranges: session.ranges }
+  }
+
   // A publisher transcript can settle the whole episode before any ASR runs.
   const shortcut = await tryTranscriptShortcut(session)
   if (shortcut) return { spans: session.spans, ranges: session.ranges }
-
-  if (session.profile.severities.length === 0) {
-    // Filtering is off: mark the episode fully analyzed so playback is unrestricted.
-    session.ranges = [{ startSec: 0, endSec: session.durationSec || Number.MAX_SAFE_INTEGER }]
-    await persist(session, 'ready')
-    return { spans: session.spans, ranges: session.ranges }
-  }
 
   // Goes through the shared store so this joins the startup download rather than
   // racing it, and so progress is reported from one place.
@@ -642,6 +648,7 @@ async function persist(
     source: existing?.source && existing.source !== 'asr' ? existing.source : source,
     engineVersion: ENGINE_VERSION,
     wordlistVersion: WORDLIST_VERSION,
+    profileId: session.profile.id,
     // Share of the episode actually examined, not how far the frontier has reached —
     // with cue-narrowing and abandoned stretches those are not the same number.
     progress: session.durationSec
