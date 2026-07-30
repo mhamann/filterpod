@@ -5,7 +5,7 @@ import clsx from 'clsx'
 import { usePlayerStore } from '@/features/player/playerStore'
 import { chapterAt, getChapters } from '@/features/chapters/chapters'
 import type { Chapter } from '@/core/types'
-import { analyzedUntil, toFilteredPosition } from '@/core/filterMath'
+import { analyzedUntil } from '@/core/filterMath'
 import { db } from '@/data/db'
 import { DEFAULT_SETTINGS } from '@/data/defaults'
 import { CutTimeline } from '@/ui/CutTimeline'
@@ -137,9 +137,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
   if (!episode) return null
 
   const remaining = Math.max(0, durationSec - positionSec)
-  const filteredElapsed = toFilteredPosition(spans, positionSec)
   const cutsPassed = spans.filter((span) => span.endSec <= positionSec).length
-  const totalCutSec = spans.reduce((sum, span) => sum + (span.endSec - span.startSec), 0)
   const frontier = analyzedUntil(analyzedRanges, positionSec)
   const fullyAnalyzed = durationSec > 0 && frontier >= durationSec - 2
 
@@ -232,12 +230,9 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
               {fullyAnalyzed ? 'Nothing to cut' : 'Nothing so far'}
             </Pill>
           ) : (
-            <>
-              <Pill tone="ember" icon="asterisk">
-                {cutsPassed}/{spans.length} cuts
-              </Pill>
-              <Pill tone="neutral">−{timecode(totalCutSec)} total</Pill>
-            </>
+            <Pill tone="ember" icon="asterisk">
+              {cutsPassed}/{spans.length} cuts
+            </Pill>
           )}
         </div>
 
@@ -258,11 +253,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose(): void }
           />
           <div className="flex items-center justify-between px-0.5">
             <span className="tabular text-xs text-ink-300">{timecode(positionSec)}</span>
-            <span className="tabular text-xs text-ink-600">
-              {/* Filtered elapsed differs from raw position once cuts are behind you. */}
-              {filteredElapsed < positionSec - 1 && `${timecode(filteredElapsed)} heard · `}
-              −{timecode(remaining)}
-            </span>
+            <span className="tabular text-xs text-ink-600">−{timecode(remaining)}</span>
           </div>
 
           {chapters.length > 0 && (
@@ -443,10 +434,6 @@ export function MiniPlayer({ onExpand }: { onExpand(): void }) {
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
     >
-      {/* Mirrors the handle on the expanded panel, hinting the same gesture upward. */}
-      <div className="flex justify-center pt-1.5">
-        <span className="h-1 w-9 rounded-full bg-panel-700" />
-      </div>
       <CutTimeline
         positionSec={positionSec}
         durationSec={durationSec}
