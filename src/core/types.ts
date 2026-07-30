@@ -29,6 +29,13 @@ export interface Podcast {
   lastModified?: string
   lastFetchedAt?: number
   lastFetchError?: string
+  /**
+   * When a refresh last actually succeeded (200 or 304). Distinct from lastFetchedAt,
+   * which advances on failures too; the error banner keys off this, because a single
+   * flaky refresh is not worth alarming anyone over — a feed that has not been
+   * reachable for a day or two is.
+   */
+  lastSuccessAt?: number
 }
 
 /** A transcript advertised by the feed via the podcast namespace. */

@@ -32,7 +32,11 @@ export async function fetchFeed(feedUrl: string, conditional = true): Promise<Re
     })
 
     if (response.status === 304) {
-      await db.podcasts.update(podcastId, { lastFetchedAt: Date.now(), lastFetchError: undefined })
+      await db.podcasts.update(podcastId, {
+        lastFetchedAt: Date.now(),
+        lastSuccessAt: Date.now(),
+        lastFetchError: undefined,
+      })
       return { podcastId, newEpisodeIds: [], unchanged: true }
     }
 
@@ -47,6 +51,7 @@ export async function fetchFeed(feedUrl: string, conditional = true): Promise<Re
       ...podcast,
       etag: response.headers['etag'] ?? existing?.etag,
       lastModified: response.headers['last-modified'] ?? existing?.lastModified,
+      lastSuccessAt: Date.now(),
       lastFetchError: undefined,
     })
     const newEpisodeIds = await upsertEpisodes(episodes)

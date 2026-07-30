@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Icon } from './Icon'
 
@@ -41,6 +41,31 @@ export function PullToRefresh({
 
   /** The scrolling ancestor, which owns the scroll position this gesture depends on. */
   const scroller = () => rootRef.current?.closest('main') ?? null
+
+  /*
+   * The part pointer events cannot do alone: keep the WebView from claiming the drag.
+   *
+   * On a touch screen the browser takes over a vertical drag for scrolling after ~10px
+   * and sends pointercancel — measured on-device: one pointermove, then cancel — so the
+   * pull never accumulates. A mouse has no native scrolling, which is how the gesture
+   * can pass in browser dev while doing nothing on the phone. Declarative touch-action
+   * was tried first and pan-up was not honoured; what works is consuming touchmove
+   * while a pull is live. Direction is safe to trust here because the pointermove for
+   * the same motion fires first: an upward drag clears pullFrom before this runs, so
+   * scrolling from the top stays native.
+   *
+   * A native listener because it must be passive: false, which React does not
+   * guarantee for its synthetic handlers.
+   */
+  useEffect(() => {
+    const element = rootRef.current
+    if (!element) return
+    const onTouchMove = (event: TouchEvent) => {
+      if (pullFrom.current !== null && event.cancelable) event.preventDefault()
+    }
+    element.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => element.removeEventListener('touchmove', onTouchMove)
+  }, [])
 
   function onPointerDown(event: React.PointerEvent) {
     if (refreshing) return
