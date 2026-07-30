@@ -27,6 +27,15 @@ const MAX_PULL_PX = 96
  */
 const DAMPING = 0.5
 
+/**
+ * Upward travel that means "this is a scroll, not a pull", handing the gesture back to
+ * the browser. Anything smaller is finger jitter: a real touch routinely wobbles a few
+ * pixels upward before heading down, and treating the first wobble as intent is why the
+ * pull only ever worked "occasionally" — a perfectly monotonic injected swipe passed
+ * while real fingers failed.
+ */
+const HAND_BACK_PX = 10
+
 export function PullToRefresh({
   onRefresh,
   children,
@@ -77,9 +86,16 @@ export function PullToRefresh({
   function onPointerMove(event: React.PointerEvent) {
     if (pullFrom.current === null) return
     const delta = event.clientY - pullFrom.current
-    if (delta <= 0) {
-      // Dragging back up hands the gesture to the scroller rather than fighting it.
+
+    if (delta < -HAND_BACK_PX && pull === 0) {
+      // Decisively upward before any pull built: a scroll. The browser takes it from
+      // the next unconsumed touchmove; the few pixels eaten deciding are imperceptible.
       pullFrom.current = null
+      setPull(0)
+      return
+    }
+    if (delta <= 0) {
+      // Jitter, or a pull dragged back to its start: keep the gesture, show nothing.
       setPull(0)
       return
     }
