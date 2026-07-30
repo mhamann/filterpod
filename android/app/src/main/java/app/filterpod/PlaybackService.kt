@@ -1,15 +1,20 @@
 package app.filterpod
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.CommandButton
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -150,9 +155,19 @@ class PlaybackService : MediaSessionService() {
      * controls.
      */
 
+    @UnstableApi
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        // Branding for the status bar: the default Media3 small icon is a generic
+        // music note; this is the asterisk, the same mark as everywhere else.
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this).build().apply {
+                setSmallIcon(R.drawable.ic_stat_filterpod)
+            },
+        )
+
         // Streamed audio is read through the shared cache, so the bytes ExoPlayer pulls
         // off the network are the same ones the transcriber later decodes rather than a
         // second copy of them. Downloaded episodes are routed straight to the file — see
@@ -163,6 +178,18 @@ class PlaybackService : MediaSessionService() {
                     MediaCache.playbackFactory(this),
                 ),
             )
+            // Audio focus: when another app starts playing, this one pauses instead of
+            // talking over it, and short interruptions (navigation prompts) duck.
+            // Without this ExoPlayer ignores focus entirely and both sources play.
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                    .build(),
+                /* handleAudioFocus= */ true,
+            )
+            // Unplugging headphones pauses rather than blaring from the speaker.
+            .setHandleAudioBecomingNoisy(true)
             .build()
             .also { player = it }
 
@@ -181,6 +208,20 @@ class PlaybackService : MediaSessionService() {
         session = MediaSession.Builder(this, SkipPlayer(exo))
             .setCallback(SkipCallback())
             .setMediaButtonPreferences(skipButtons())
+            // Tapping the notification (or the system media card) opens the app. Without
+            // a session activity the tap simply does nothing.
+            .apply {
+                packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
+                    setSessionActivity(
+                        PendingIntent.getActivity(
+                            this@PlaybackService,
+                            0,
+                            launch,
+                            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                        ),
+                    )
+                }
+            }
             .build().also {
             // Registering the session is what hands Media3 responsibility for the media
             // notification and for promoting the service to the foreground. Building a
