@@ -8,6 +8,7 @@ import {
   unsubscribe as persistUnsubscribe,
 } from '@/data/repo'
 import { db } from '@/data/db'
+import { writeLibraryBackup } from '@/data/backup'
 import { fetchFeed, refreshAllSubscriptions } from '@/features/feeds/refresh'
 import { deleteDownload, enqueueDownload } from '@/features/downloads/downloadManager'
 
@@ -53,6 +54,12 @@ export async function subscribeToFeed(
   }
 
   const episodeCount = await db.episodes.where('podcastId').equals(podcastId).count()
+
+  // Keep the durable mirror current, so a WebView storage wipe can be healed. Done on
+  // the subscription mutations specifically: they are what make an empty database
+  // distinguishable from a deliberately emptied library.
+  void writeLibraryBackup().catch(() => {})
+
   return { podcastId, episodeCount, queuedForDownload }
 }
 
@@ -67,6 +74,9 @@ export async function unsubscribeFromFeed(podcastId: PodcastId): Promise<void> {
     await deleteDownload(episodeId)
   }
   await persistUnsubscribe(podcastId)
+  // Unsubscribing the last show must leave a backup that says "empty on purpose",
+  // or the next launch would faithfully restore what was just removed.
+  void writeLibraryBackup().catch(() => {})
 }
 
 /**

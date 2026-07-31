@@ -1,5 +1,6 @@
 import { liveQuery } from 'dexie'
 import { getPlatform } from '@/platform'
+import { restoreLibraryBackupIfEmpty, writeLibraryBackup } from '@/data/backup'
 import {
   getSettings,
   healEncodedTitles,
@@ -81,6 +82,12 @@ export async function bootstrap(): Promise<void> {
 
   void (async () => {
     try {
+      // WebView IndexedDB is evictable — a full phone had Chromium delete the whole
+      // database. If that happened, the native-file backup puts the library back
+      // before anything else runs; the refresh below then repopulates episodes.
+      if (await restoreLibraryBackupIfEmpty()) {
+        console.info('FilterPod: library restored from native backup')
+      }
       // Old rows may hold entity-encoded titles that a 304-answering feed will never
       // re-deliver decoded; heal them in place. No-op after the first pass.
       await healEncodedTitles()
@@ -89,6 +96,9 @@ export async function bootstrap(): Promise<void> {
       await enforceStorageBudget()
     } catch {
       // A failed background refresh must never block the app from starting.
+    } finally {
+      // Mirror the (possibly just-refreshed) library back to durable storage.
+      void writeLibraryBackup().catch(() => {})
     }
   })()
 }
