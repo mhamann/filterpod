@@ -29,6 +29,7 @@ export function Artwork({
           src={cached ?? src}
           alt={alt}
           loading="lazy"
+          draggable={false}
           className="h-full w-full object-cover"
           onError={(event) => {
             const img = event.currentTarget
