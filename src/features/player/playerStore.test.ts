@@ -283,6 +283,8 @@ describe('the queue', () => {
     calls.length = 0
     queueOps.length = 0
 
+    // As on a real player: the episode is heard playing before it can end.
+    statusCallback?.({ state: 'playing', positionSec: 3599, durationSec: 3600, skippedSec: 0, buffered: 3600 })
     statusCallback?.({
       state: 'ended',
       positionSec: 3600,
@@ -296,6 +298,34 @@ describe('the queue', () => {
     // one can be read — otherwise advancing would replay what just finished.
     expect(queueOps[0]).toBe('remove:e1')
     expect(calls.indexOf('load')).toBeLessThan(calls.indexOf('play'))
+  })
+
+  it('advances once, not once per emission, when "ended" repeats', async () => {
+    await usePlayerStore.getState().open('e1', false)
+    queueHead = 'e2'
+    queueOps.length = 0
+
+    // The native ticker reports status on a timer, so 'ended' arrives over and over
+    // until the next episode's load resets the state. This drained real queues: every
+    // emission advanced again, treating the just-opened episode as finished.
+    const ended = {
+      state: 'ended',
+      positionSec: 3600,
+      durationSec: 3600,
+      skippedSec: 0,
+      buffered: 3600,
+    }
+    statusCallback?.({ ...ended, state: 'playing', positionSec: 3599 })
+    statusCallback?.(ended)
+    statusCallback?.(ended)
+    statusCallback?.(ended)
+    statusCallback?.(ended)
+    await vi.waitFor(() => expect(queueOps).toContain('remove:e1'))
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    expect(queueOps.filter((op) => op === 'remove:e1')).toHaveLength(1)
+    // The freshly advanced-to episode must survive the stale emissions.
+    expect(queueOps).not.toContain('remove:e2')
   })
 
   it('stops at the end when nothing else is queued', async () => {

@@ -153,6 +153,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     unsubscribeStatus?.()
     unsubscribeSkip?.()
 
+    /*
+     * Status is emitted on a timer, not on change, so 'ended' arrives five times a
+     * second for as long as the player sits at the end — including the moments after
+     * advancing, before the next episode's load resets the native state. Handling it
+     * per-emission drained whole queues: each tick treated the freshly opened episode
+     * as "finished", removed it, and advanced again. Two latches make it an edge:
+     * advance at most once per subscription, and only after this episode has actually
+     * been seen doing something — a brand-new subscription still receiving the previous
+     * episode's stale 'ended' must not mark its own episode finished.
+     */
+    let sawActive = false
+    let endedHandled = false
+
     unsubscribeStatus = platform.player.onStatus((status) => {
       set({
         state: status.state,
@@ -204,7 +217,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         lastSaveAt = now
         void saveProgress(episodeId, status.positionSec, status.durationSec, completionThresholdSec)
       }
-      if (status.state === 'ended') {
+
+      if (status.state === 'loading' || status.state === 'playing' || status.state === 'paused') {
+        sawActive = true
+      }
+      if (status.state === 'ended' && sawActive && !endedHandled) {
+        endedHandled = true
         void saveProgress(episodeId, status.durationSec, status.durationSec, completionThresholdSec)
         void advanceQueue()
       }
