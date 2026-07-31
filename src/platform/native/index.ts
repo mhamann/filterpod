@@ -1,4 +1,4 @@
-import { CapacitorHttp } from '@capacitor/core'
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import type { FilterSpan, TimedWord } from '@/core/types'
 import { normalizeSpans } from '@/core/filterMath'
@@ -80,6 +80,13 @@ function createNativeFiles(): FilesPlatform {
       // file:// directly.
       const { uri } = await Filesystem.getUri({ path: path(key), directory: DATA_DIR })
       return uri
+    },
+
+    async toWebUrl(key) {
+      // The WebView cannot load file:// from its https origin; convertFileSrc maps the
+      // path onto Capacitor's internal server, which is exactly what <img> needs.
+      const { uri } = await Filesystem.getUri({ path: path(key), directory: DATA_DIR })
+      return Capacitor.convertFileSrc(uri)
     },
 
     async read(key) {

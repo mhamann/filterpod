@@ -49,6 +49,12 @@ export interface FilesPlatform {
   write(key: string, data: Blob | ArrayBuffer): Promise<StoredFile>
   /** A URL the player can load — an object URL in the browser, a file URI on device. */
   toPlayableUrl(key: string): Promise<string>
+  /**
+   * A URL the WebVIEW can load — for <img> and friends. Distinct from toPlayableUrl
+   * because the two consumers disagree: ExoPlayer reads file:// and cannot fetch
+   * Capacitor's localhost scheme, while the WebView is exactly the reverse.
+   */
+  toWebUrl(key: string): Promise<string>
   read(key: string): Promise<ArrayBuffer>
   delete(key: string): Promise<void>
   exists(key: string): Promise<boolean>

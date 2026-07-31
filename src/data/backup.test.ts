@@ -55,7 +55,13 @@ describe('library backup', () => {
       episodeId: 'e1', positionSec: 120, durationSec: 300, played: false, lastPlayedAt: 2,
     })
     await db.queue.add({ episodeId: 'e1', position: 0, addedAt: 3 })
-    await db.wordOverrides.add({ term: 'crikey', action: 'block', addedAt: 4 })
+    await db.wordOverrides.add({
+      term: 'crikey',
+      action: 'block',
+      severity: 'mild',
+      category: 'custom',
+      createdAt: 4,
+    })
 
     await writeLibraryBackup()
     await clearAll()

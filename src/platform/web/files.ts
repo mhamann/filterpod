@@ -44,6 +44,11 @@ export function createWebFiles(): FilesPlatform {
       return url
     },
 
+    async toWebUrl(key) {
+      // In a browser the playable URL is already a web URL.
+      return this.toPlayableUrl(key)
+    },
+
     async read(key) {
       const dir = await root()
       const handle = await dir.getFileHandle(encodeKey(key))

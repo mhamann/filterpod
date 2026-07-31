@@ -82,6 +82,12 @@ export interface Subscription {
   autoDownloadLimit: number
   notifyOnNew: boolean
   /**
+   * Position in the library grid, dense from 0, written whenever the user rearranges.
+   * Absent on rows from before reordering existed — those sort by recency after any
+   * ordered rows, which is the order the grid always showed them in.
+   */
+  sortOrder?: number
+  /**
    * New episodes join the end of the queue when the feed refreshes.
    *
    * This is the "subscribed, not just following" behaviour, expressed as a per-show
