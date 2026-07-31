@@ -6,7 +6,7 @@ import { duration, relativeDate, timecode } from './format'
 import { Button, FilterStatus, ProgressBar } from './components'
 import { Icon } from './Icon'
 import { enqueueDownload } from '@/features/downloads/downloadManager'
-import { enqueueEpisode, removeFromQueue } from '@/data/repo'
+import { enqueueEpisode, removeFromQueue, setPlayed } from '@/data/repo'
 import { usePlayerStore } from '@/features/player/playerStore'
 
 /**
@@ -121,6 +121,29 @@ export function EpisodeRow({ episode }: { episode: Episode }) {
             {isDownloading ? 'Downloading' : 'Get'}
           </Button>
         )}
+
+        {/*
+          Played toggles, like the queue button: filled when done, and tapping again
+          undoes it. The undo half exists because "played" can be wrong — a finished
+          episode someone wants to rehear, or one mis-stamped by a bug — and a state
+          the user cannot correct stops being trusted.
+        */}
+        <Button
+          size="sm"
+          variant={progress?.played ? 'primary' : 'secondary'}
+          icon="check"
+          className="!px-2.5"
+          aria-label={progress?.played ? 'Mark as unplayed' : 'Mark as played'}
+          onClick={() =>
+            void (async () => {
+              const next = !progress?.played
+              await setPlayed(episode.id, next)
+              // Manually marking done is finishing by decree; it leaves the queue the
+              // same way a naturally finished episode does.
+              if (next) await removeFromQueue(episode.id)
+            })()
+          }
+        />
 
         <FilterStatus map={filterMap} download={download} compact />
 
