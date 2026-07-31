@@ -2,7 +2,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/data/db'
+import { setLibraryOrder } from '@/data/repo'
 import { Artwork, Button, EmptyState, SectionLabel } from '@/ui/components'
+import { ReorderableGrid } from '@/ui/ReorderableGrid'
 import { timecode } from '@/ui/format'
 import { refreshAndAutoDownload } from '@/features/subscriptions/service'
 import { PullToRefresh } from '@/ui/PullToRefresh'
@@ -26,7 +28,14 @@ export function Library() {
 
   const subscriptions = useLiveQuery(
     async () => {
-      const subs = await db.subscriptions.orderBy('subscribedAt').reverse().toArray()
+      const subs = await db.subscriptions.toArray()
+      // Arranged rows first, in their arranged order; the rest by recency, which is
+      // the order the grid always showed before arranging existed.
+      subs.sort(
+        (a, b) =>
+          (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+          b.subscribedAt - a.subscribedAt,
+      )
       const podcasts = await db.podcasts.bulkGet(subs.map((s) => s.podcastId))
       return podcasts.filter((podcast): podcast is NonNullable<typeof podcast> =>
         Boolean(podcast),
@@ -162,12 +171,18 @@ export function Library() {
 
           <section className="px-4 pb-5">
             <SectionLabel>Shows</SectionLabel>
-            <div className="grid grid-cols-3 gap-3">
-              {visibleShows.map((podcast) => (
+            {/* Hold a tile to lift it, then drag; the arrangement persists. */}
+            <ReorderableGrid
+              items={visibleShows}
+              idOf={(podcast) => podcast.id}
+              enabled={trimmed === ''}
+              onReorder={(ids) => void setLibraryOrder(ids)}
+              className="grid grid-cols-3 gap-3"
+              renderItem={(podcast, dragging) => (
                 <Link
-                  key={podcast.id}
                   to={`/podcast/${podcast.id}`}
-                  className="focus-ring group block"
+                  draggable={false}
+                  className={`focus-ring group block ${dragging ? 'opacity-90 drop-shadow-2xl' : ''}`}
                 >
                   <Artwork
                     src={podcast.artworkUrl}
@@ -178,8 +193,8 @@ export function Library() {
                     {podcast.title}
                   </p>
                 </Link>
-              ))}
-            </div>
+              )}
+            />
 
             {trimmed !== '' && (
               <div className="pt-3">

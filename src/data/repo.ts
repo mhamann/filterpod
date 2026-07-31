@@ -140,6 +140,15 @@ export async function subscribe(podcastId: PodcastId, patch: Partial<Subscriptio
   return subscription
 }
 
+/** Writes the library's arrangement: dense sortOrder in the order given. */
+export async function setLibraryOrder(podcastIds: PodcastId[]): Promise<void> {
+  await db.transaction('rw', db.subscriptions, async () => {
+    for (const [index, podcastId] of podcastIds.entries()) {
+      await db.subscriptions.update(podcastId, { sortOrder: index })
+    }
+  })
+}
+
 /** Unsubscribes and reclaims storage; listening history is kept. */
 export async function unsubscribe(podcastId: PodcastId): Promise<EpisodeId[]> {
   const episodes = await db.episodes.where('podcastId').equals(podcastId).toArray()

@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import type { ReactNode } from 'react'
 import type { Download, FilterMap } from '@/core/types'
 import { Icon, type IconName } from './Icon'
+import { useCachedArtwork } from './artworkCache'
 import { bytes } from './format'
 
 /** Podcast artwork with a panel-toned placeholder for missing or failed images. */
@@ -14,6 +15,8 @@ export function Artwork({
   alt: string
   className?: string
 }) {
+  // Served from the native-file cache once fetched; see artworkCache.ts.
+  const cached = useCachedArtwork(src)
   return (
     <div
       className={clsx(
@@ -23,7 +26,7 @@ export function Artwork({
     >
       {src ? (
         <img
-          src={src}
+          src={cached ?? src}
           alt={alt}
           loading="lazy"
           className="h-full w-full object-cover"
