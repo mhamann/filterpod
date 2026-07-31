@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import type { ReactNode } from 'react'
 import type { Download, FilterMap } from '@/core/types'
 import { Icon, type IconName } from './Icon'
-import { useCachedArtwork } from './artworkCache'
+import { invalidateArtwork, useCachedArtwork } from './artworkCache'
 import { bytes } from './format'
 
 /** Podcast artwork with a panel-toned placeholder for missing or failed images. */
@@ -31,7 +31,16 @@ export function Artwork({
           loading="lazy"
           className="h-full w-full object-cover"
           onError={(event) => {
-            event.currentTarget.style.visibility = 'hidden'
+            const img = event.currentTarget
+            // A broken cache entry must degrade to the network, never to a blank
+            // tile: purge it and retry the original URL. Only when the remote
+            // itself fails does the placeholder show.
+            if (src && img.src !== src) {
+              invalidateArtwork(src)
+              img.src = src
+              return
+            }
+            img.style.visibility = 'hidden'
           }}
         />
       ) : (

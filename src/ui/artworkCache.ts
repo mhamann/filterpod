@@ -18,11 +18,23 @@ import { getPlatform } from '@/platform'
 const resolved = new Map<string, string>()
 const inflight = new Set<string>()
 
-/** djb2, hex — collisions across a few dozen artwork URLs are not a concern. */
+/**
+ * djb2, hex — collisions across a few dozen artwork URLs are not a concern. The "2-"
+ * versions the namespace: v1 entries were written through a text-typed fetch that
+ * mangled the bytes, so every one of them is corrupt and must never be served again.
+ */
 function keyFor(url: string): string {
   let hash = 5381
   for (let i = 0; i < url.length; i++) hash = ((hash * 33) ^ url.charCodeAt(i)) >>> 0
-  return `artwork/${hash.toString(36)}`
+  return `artwork/2-${hash.toString(36)}`
+}
+
+/** Drops a cache entry that turned out to be unrenderable, so it refills next time. */
+export function invalidateArtwork(src: string): void {
+  resolved.delete(src)
+  void getPlatform()
+    .files.delete(keyFor(src))
+    .catch(() => {})
 }
 
 export function useCachedArtwork(src?: string): string | undefined {

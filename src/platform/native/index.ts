@@ -48,7 +48,17 @@ function createNativeHttp(): HttpPlatform {
         status: response.status,
         headers: normalized,
         text: async () => body,
-        arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+        /*
+         * Bytes need their own fetch. The request above ran as responseType 'text',
+         * and binary that has been through a UTF-8 decode does not survive — cached
+         * artwork written from it was corrupt on every device. Re-requesting as
+         * 'blob' hands back base64, which decodes losslessly. A second round-trip,
+         * paid only by callers that actually want bytes, and only once each.
+         */
+        arrayBuffer: async () => {
+          const binary = await CapacitorHttp.get({ url, headers, responseType: 'blob' })
+          return base64ToArrayBuffer(typeof binary.data === 'string' ? binary.data : '')
+        },
       }
     },
   }
