@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import clsx from 'clsx'
 import { getPlatform } from '@/platform'
 
 /**
@@ -44,20 +45,26 @@ export function ReorderableGrid<T>({
   const start = useRef<{ x: number; y: number; index: number } | null>(null)
   const rects = useRef<DOMRect[]>([])
   const justDragged = useRef(false)
+  /** Mirrors `drag` for the native listener — a ref so there is no re-subscribe race. */
+  const dragActive = useRef(false)
   const [drag, setDrag] = useState<{ index: number; to: number; dx: number; dy: number } | null>(
     null,
   )
 
-  // The browser must not claim the pointer for scrolling mid-drag.
+  /*
+   * The browser must not claim the pointer for scrolling mid-drag. Attached once at
+   * mount and consulting a ref: the first touchmove after the lift can arrive before a
+   * re-subscribing effect would have run, and losing that one move loses the gesture.
+   */
   useEffect(() => {
     const element = containerRef.current
     if (!element) return
     const onTouchMove = (event: TouchEvent) => {
-      if (drag && event.cancelable) event.preventDefault()
+      if (dragActive.current && event.cancelable) event.preventDefault()
     }
     element.addEventListener('touchmove', onTouchMove, { passive: false })
     return () => element.removeEventListener('touchmove', onTouchMove)
-  }, [drag])
+  }, [])
 
   function clearHold() {
     if (holdTimer.current !== null) window.clearTimeout(holdTimer.current)
@@ -72,6 +79,7 @@ export function ReorderableGrid<T>({
       const container = containerRef.current
       if (!container || !start.current) return
       rects.current = [...container.children].map((child) => child.getBoundingClientRect())
+      dragActive.current = true
       setDrag({ index, to: index, dx: 0, dy: 0 })
       getPlatform().haptics.tick()
     }, LIFT_MS)
@@ -124,6 +132,7 @@ export function ReorderableGrid<T>({
       onReorder(order)
     }
     justDragged.current = true
+    dragActive.current = false
     setDrag(null)
   }
 
@@ -144,9 +153,19 @@ export function ReorderableGrid<T>({
   }
 
   return (
+    /*
+     * The suppression trio, all needed on real touch screens and all invisible to
+     * synthetic pointer events: user-select none (a long-press on the title text
+     * otherwise starts text selection and swallows the gesture), touch-callout none
+     * (iOS link preview), and dragstart prevention (an <img> inside a link is natively
+     * draggable, and Android turns long-press-then-move into an HTML5 drag that
+     * pointercancels ours).
+     */
     <div
       ref={containerRef}
-      className={className}
+      className={clsx('select-none', className)}
+      style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
+      onDragStartCapture={(event) => event.preventDefault()}
       onClickCapture={(event) => {
         // The release of a drag lands on a tile that is usually a link; one drag must
         // not also be one navigation.
@@ -172,6 +191,7 @@ export function ReorderableGrid<T>({
           onPointerCancel={() => {
             clearHold()
             start.current = null
+            dragActive.current = false
             setDrag(null)
           }}
           onContextMenu={(event) => {
