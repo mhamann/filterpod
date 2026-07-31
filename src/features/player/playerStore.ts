@@ -265,6 +265,34 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     const episode = await getEpisode(episodeId)
     if (!episode) throw new Error(`unknown episode ${episodeId}`)
 
+    /*
+     * Settle the episode being walked away from. Its position is saved (the periodic
+     * save can be up to five seconds stale), and if it was within the completion
+     * threshold of its end — the outro, the credits — switching away counts as
+     * finishing: it is marked played by saveProgress's own threshold rule and leaves
+     * the queue the same way a naturally ended episode does.
+     */
+    // An episode that reached its natural end is advanceQueue's business, not this
+    // path's — settling here too would double up the bookkeeping.
+    const outgoing = get()
+    if (
+      outgoing.episode &&
+      outgoing.loaded &&
+      outgoing.episode.id !== episodeId &&
+      outgoing.state !== 'ended'
+    ) {
+      await saveProgress(
+        outgoing.episode.id,
+        outgoing.positionSec,
+        outgoing.durationSec,
+        settings.completionThresholdSec,
+      )
+      const nearEnd =
+        outgoing.durationSec > 0 &&
+        outgoing.positionSec >= outgoing.durationSec - settings.completionThresholdSec
+      if (nearEnd) await removeFromQueue(outgoing.episode.id)
+    }
+
     const [podcast, download, progress, profile, overrides] = await Promise.all([
       getPodcast(episode.podcastId),
       getDownload(episodeId),

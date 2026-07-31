@@ -328,6 +328,29 @@ describe('the queue', () => {
     expect(queueOps).not.toContain('remove:e2')
   })
 
+  it('counts a near-finished episode as done when switching to another', async () => {
+    await usePlayerStore.getState().open('e1', false)
+    // 20s from the end — inside the 60s completion threshold the settings mock uses.
+    statusCallback?.({ state: 'playing', positionSec: 3580, durationSec: 3600, skippedSec: 0, buffered: 3600 })
+    queueOps.length = 0
+
+    await usePlayerStore.getState().open('e2', false)
+
+    // Walking away during the outro is finishing; the episode leaves the queue like a
+    // naturally ended one instead of lingering 20 seconds from done.
+    expect(queueOps).toContain('remove:e1')
+  })
+
+  it('leaves a half-heard episode queued when switching away', async () => {
+    await usePlayerStore.getState().open('e1', false)
+    statusCallback?.({ state: 'playing', positionSec: 1800, durationSec: 3600, skippedSec: 0, buffered: 3600 })
+    queueOps.length = 0
+
+    await usePlayerStore.getState().open('e2', false)
+
+    expect(queueOps).not.toContain('remove:e1')
+  })
+
   it('stops at the end when nothing else is queued', async () => {
     await usePlayerStore.getState().open('e1', false)
     queueHead = undefined

@@ -48,6 +48,7 @@ export function Button({
   disabled,
   className,
   icon,
+  'aria-label': ariaLabel,
 }: {
   children?: ReactNode
   onClick?: () => void
@@ -56,12 +57,15 @@ export function Button({
   disabled?: boolean
   className?: string
   icon?: IconName
+  /** Required for icon-only buttons, which otherwise have no accessible name. */
+  'aria-label'?: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-label={ariaLabel}
       className={clsx(
         'focus-ring inline-flex items-center justify-center gap-2 rounded-full font-medium transition',
         'disabled:cursor-not-allowed disabled:opacity-40',
