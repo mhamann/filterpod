@@ -203,6 +203,35 @@ class PlaybackService : MediaSessionService() {
                 }
                 emitStatus(exo)
             }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // Every pause names its cause in the log. "It just stopped" reports are
+                // undiagnosable without this; with it they are one logcat away.
+                val cause = when (reason) {
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "user-request"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audio-focus-loss"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "becoming-noisy"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "end-of-item"
+                    else -> "reason-$reason"
+                }
+                android.util.Log.i("FilterPod", "playWhenReady=$playWhenReady ($cause)")
+
+                if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
+                    // A headset dropping mid-listen — the mower scenario. Pausing is
+                    // right; staying paused after the earbuds reconnect a second later
+                    // is not. Arm a resume that fires when a headset returns.
+                    armHeadsetResume()
+                } else {
+                    // Any other transition — the user pressing pause after the drop,
+                    // or playback resuming by any path — retires the pending resume.
+                    disarmHeadsetResume()
+                }
+            }
+
+            override fun onPlaybackSuppressionReasonChanged(reason: Int) {
+                android.util.Log.i("FilterPod", "suppression=$reason")
+            }
         })
 
         session = MediaSession.Builder(this, SkipPlayer(exo))
@@ -360,6 +389,49 @@ class PlaybackService : MediaSessionService() {
 
     fun pause() = onMain {
         player?.pause()
+    }
+
+    /** Wall-clock of the becoming-noisy pause the pending headset resume belongs to. */
+    private var noisyPausedAtMs = 0L
+    private var deviceCallback: android.media.AudioDeviceCallback? = null
+
+    /**
+     * Resumes playback when a headset returns after a becoming-noisy pause.
+     *
+     * Bluetooth earbuds drop for a moment constantly in the real world — a mower's
+     * vibration, a phone in the far pocket — and Android's becoming-noisy contract only
+     * covers the pause half. Without this, every blip was a permanent stop the listener
+     * discovered as silence. The resume fires only for a genuine headset (never the
+     * speaker), only within [NOISY_RESUME_WINDOW_MS], and is disarmed by any other
+     * playback transition — a user who pressed pause after the drop stays paused.
+     */
+    private fun armHeadsetResume() {
+        noisyPausedAtMs = System.currentTimeMillis()
+        if (deviceCallback != null) return
+        val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val callback = object : android.media.AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(added: Array<android.media.AudioDeviceInfo>) {
+                if (!added.any { it.isSink && it.type in HEADSET_DEVICE_TYPES }) return
+                if (System.currentTimeMillis() - noisyPausedAtMs > NOISY_RESUME_WINDOW_MS) {
+                    disarmHeadsetResume()
+                    return
+                }
+                android.util.Log.i("FilterPod", "headset returned; resuming")
+                disarmHeadsetResume()
+                // A beat for the audio route to actually settle on the new device;
+                // resuming into a route mid-switch clips the first words.
+                handler.postDelayed({ play() }, 750)
+            }
+        }
+        deviceCallback = callback
+        audioManager.registerAudioDeviceCallback(callback, handler)
+    }
+
+    private fun disarmHeadsetResume() {
+        val callback = deviceCallback ?: return
+        deviceCallback = null
+        val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.unregisterAudioDeviceCallback(callback)
     }
 
     /**
@@ -550,6 +622,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         // The last position must outlive the service, or a kill while paused loses it.
         player?.let { journalPosition(it) }
+        disarmHeadsetResume()
         handler.removeCallbacks(ticker)
         session?.release()
         player?.release()
@@ -598,6 +671,22 @@ class PlaybackService : MediaSessionService() {
          * which can catch up and auto-resume — always pauses first when it is alive.
          */
         private const val FRONTIER_MARGIN_MS = 1_000L
+
+        /**
+         * How long a becoming-noisy pause stays willing to resume when a headset
+         * returns. Long enough to cover earbuds going back in their case for a chore's
+         * worth of interruption; short enough that putting them in tomorrow morning
+         * does not start audio out of nowhere.
+         */
+        private const val NOISY_RESUME_WINDOW_MS = 10 * 60_000L
+
+        /**
+         * Output types that count as "a headset came back" for the auto-resume.
+         * Raw constants because several are newer than minSdk: A2DP(8), wired
+         * headset(3)/headphones(4), USB headset(22), hearing aid(23), BLE
+         * headset(26), BLE broadcast(30).
+         */
+        private val HEADSET_DEVICE_TYPES = setOf(3, 4, 8, 22, 23, 26, 30)
 
         /** A load requested before the service finished starting. */
         data class LoadRequest(
