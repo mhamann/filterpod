@@ -190,6 +190,10 @@ class PlaybackService : MediaSessionService() {
             )
             // Unplugging headphones pauses rather than blaring from the speaker.
             .setHandleAudioBecomingNoisy(true)
+            // Partial wake + wifi lock while playing: streamed audio and the
+            // transcription racing ahead of it both need the CPU and radio up with the
+            // screen off.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
             .also { player = it }
 
