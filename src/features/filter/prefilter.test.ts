@@ -42,7 +42,7 @@ async function seedEpisode(id: string) {
   })
   await db.downloads.put({
     episodeId: id, state: 'downloaded', fileKey: `audio/${id}`, bytesDownloaded: 1,
-    bytesTotal: 1, startedAt: 0, completedAt: 1,
+    bytesTotal: 1, startedAt: 0, completedAt: 1, auto: false,
   })
 }
 
