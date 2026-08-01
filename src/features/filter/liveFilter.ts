@@ -49,8 +49,16 @@ import { sortAndDedupe, spansFromMatches } from './buildFilterMap'
  */
 const LEAD_IN_SEC = 15
 
-/** How far ahead of the playhead to stay. Work pauses once this much is buffered. */
-const TARGET_LEAD_SEC = 240
+/**
+ * How far ahead of the playhead to stay. Work pauses once this much is buffered.
+ *
+ * Ten minutes, not the four it used to be, and the difference is thermal: sustained
+ * whisper in a summer pocket throttles the SoC until ASR barely outruns playback
+ * (measured 20x realtime cool, ~2x throttled, on the same device within an hour).
+ * A thin lead under throttling means stutter at the frontier; a fat lead banked
+ * while the chip is cool rides the hot stretches out entirely.
+ */
+const TARGET_LEAD_SEC = 600
 
 /** Resume work when the cushion falls below this. Hysteresis, so it is not thrashing. */
 const RESUME_LEAD_SEC = 150
