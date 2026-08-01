@@ -162,6 +162,9 @@ class TranscriberPlugin : Plugin() {
         loadedModel = model
     }
 
+    /** Backstop so an abandoned transcription can never pin the CPU indefinitely. */
+    private val WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L
+
     @PluginMethod
     fun transcribe(call: PluginCall) {
         val requestId = call.getString("requestId") ?: return call.reject("requestId is required")
@@ -173,6 +176,24 @@ class TranscriberPlugin : Plugin() {
         cancelled[requestId] = flag
 
         scope.launch(transcribeDispatcher) {
+            /*
+             * A partial wakelock for the whole run. The manifest has declared WAKE_LOCK
+             * with a comment promising exactly this since the beginning — but nothing
+             * ever acquired one, and ExoPlayer's own wake mode holds the CPU only while
+             * AUDIO is playing. The failure that exposed it: playback pauses at the
+             * analysis frontier, the player's lock releases, a cool stationary phone
+             * drops into deep sleep, and the very transcription that would un-pause
+             * playback is suspended — stuck until the user wakes the screen. Timed as a
+             * backstop so an abandoned call can never pin the CPU for good.
+             */
+            val powerManager = context.getSystemService(android.content.Context.POWER_SERVICE)
+                as android.os.PowerManager
+            val wakeLock = powerManager.newWakeLock(
+                android.os.PowerManager.PARTIAL_WAKE_LOCK, "filterpod:transcribe",
+            ).apply {
+                setReferenceCounted(false)
+                acquire(WAKE_LOCK_TIMEOUT_MS)
+            }
             try {
                 // Step-by-step, because a single timing line at the end cannot say which
                 // stage is slow — and a stage that never returns logs nothing at all.
@@ -287,6 +308,7 @@ class TranscriberPlugin : Plugin() {
                 call.reject(error.message ?: "transcription failed")
             } finally {
                 cancelled.remove(requestId)
+                if (wakeLock.isHeld) wakeLock.release()
             }
         }
     }

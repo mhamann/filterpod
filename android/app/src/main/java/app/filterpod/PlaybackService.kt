@@ -395,6 +395,36 @@ class PlaybackService : MediaSessionService() {
         player?.pause()
     }
 
+    /**
+     * Held while playback is paused waiting for analysis to catch up.
+     *
+     * ExoPlayer's wake mode releases its lock the moment playback pauses, and the
+     * per-transcription lock only exists while a chunk is in flight. In the gap — paused
+     * at the frontier, next chunk not yet requested — a still, cool phone suspends the
+     * CPU, the service ticker and the WebView both stop, and the pause becomes permanent
+     * until the screen wakes. This lock bridges exactly that gap, driven by the web
+     * layer's catchingUp state and time-capped in case that state is never cleared.
+     */
+    private var catchupLock: android.os.PowerManager.WakeLock? = null
+
+    fun setCatchupHold(active: Boolean) = onMain {
+        if (active) {
+            if (catchupLock == null) {
+                val powerManager = getSystemService(android.content.Context.POWER_SERVICE)
+                    as android.os.PowerManager
+                catchupLock = powerManager.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK, "filterpod:catchup",
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire(CATCHUP_HOLD_TIMEOUT_MS)
+                }
+            }
+        } else {
+            catchupLock?.takeIf { it.isHeld }?.release()
+            catchupLock = null
+        }
+    }
+
     /** Wall-clock of the becoming-noisy pause the pending headset resume belongs to. */
     private var noisyPausedAtMs = 0L
     private var deviceCallback: android.media.AudioDeviceCallback? = null
@@ -627,6 +657,7 @@ class PlaybackService : MediaSessionService() {
         // The last position must outlive the service, or a kill while paused loses it.
         player?.let { journalPosition(it) }
         disarmHeadsetResume()
+        setCatchupHold(false)
         handler.removeCallbacks(ticker)
         session?.release()
         player?.release()
@@ -675,6 +706,9 @@ class PlaybackService : MediaSessionService() {
          * which can catch up and auto-resume — always pauses first when it is alive.
          */
         private const val FRONTIER_MARGIN_MS = 1_000L
+
+        /** Cap on the catch-up hold, in case the web layer dies without clearing it. */
+        private const val CATCHUP_HOLD_TIMEOUT_MS = 15 * 60_000L
 
         /**
          * How long a becoming-noisy pause stays willing to resume when a headset

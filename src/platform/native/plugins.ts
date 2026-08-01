@@ -35,6 +35,8 @@ export interface FilterPlayerPlugin {
   setSkipIncrements(options: { backSec: number; forwardSec: number }): Promise<void>
   /** One crisp EFFECT_TICK, for gesture detents. */
   hapticTick(): Promise<void>
+  /** Holds the CPU awake during a catch-up pause, so analysis can end it. */
+  setCatchupHold(options: { active: boolean }): Promise<void>
   /** Spans are evaluated on a native handler, so skipping survives the screen going off. */
   setFilterSpans(options: {
     spans: FilterSpan[]

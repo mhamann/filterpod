@@ -185,6 +185,12 @@ export interface PlayerPlatform {
    * WebView, which is the entire point of it working while the app is backgrounded.
    */
   setSkipIncrements(backSec: number, forwardSec: number): Promise<void>
+  /**
+   * Keeps the CPU awake while playback is paused waiting for analysis. On Android the
+   * player's own wakelock exists only while audio plays — without this, a catch-up
+   * pause on a still phone suspends the very pipeline that would end it. No-op on web.
+   */
+  setCatchupHold(active: boolean): Promise<void>
   onStatus(cb: (s: PlayerStatus) => void): () => void
   /** Fired as each span is skipped, for the "skipped N" UI. */
   onSkip(cb: (span: FilterSpan) => void): () => void
