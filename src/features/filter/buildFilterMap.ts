@@ -26,9 +26,20 @@ export interface BuildOptions {
   profile: FilterProfile
   overrides: WordOverride[]
   model: string
+  /**
+   * Cap on any single ASR window. Without it a no-transcript episode becomes one
+   * monolithic native call that cancellation cannot interrupt — the whisper run checks
+   * its abort flag only *between* windows — which let a background prefilter starve a
+   * live listener for the length of an entire episode. Sliced, the transcriber changes
+   * hands within one window of a cancel.
+   */
+  maxWindowSec?: number
   onProgress?: (fraction: number) => void
   signal?: AbortSignal
 }
+
+/** Extra audio sliced beyond the feed's claimed duration, because feeds lie by minutes. */
+const DURATION_SLACK_SEC = 300
 
 export interface BuildResult {
   spans: FilterSpan[]
@@ -146,6 +157,17 @@ export async function buildFilterMap(options: BuildOptions): Promise<BuildResult
   }
 
   // --- 3. ASR, either narrowed or full --------------------------------------
+  if (!windows && options.maxWindowSec && episode.durationSec) {
+    // Slice the full pass into bounded windows; see maxWindowSec. The slack window
+    // past the claimed duration covers feeds that under-report; decoding past the
+    // real end just returns nothing.
+    windows = []
+    const end = episode.durationSec + DURATION_SLACK_SEC
+    for (let start = 0; start < end; start += options.maxWindowSec) {
+      windows.push({ startSec: start, endSec: Math.min(start + options.maxWindowSec, end) })
+    }
+  }
+
   const words = await getPlatform().transcriber.transcribe({
     episodeId: episode.id,
     fileKey,
