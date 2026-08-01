@@ -11,8 +11,10 @@ import {
 import {
   enforceStorageBudget,
   reconcileDownloads,
+  setDownloadCompletionHandler,
   watchNetwork,
 } from '@/features/downloads/downloadManager'
+import { prefilterDownloadedBacklog, prefilterEpisode } from '@/features/filter/prefilter'
 import { refreshAndAutoDownload } from '@/features/subscriptions/service'
 import { prefetchModelInBackground } from '@/features/filter/modelStore'
 import { usePlayerStore } from '@/features/player/playerStore'
@@ -66,6 +68,11 @@ export async function bootstrap(): Promise<void> {
   watchNetwork()
   watchSkipIncrements()
 
+  // Downloaded episodes are filtered ahead of time — at download, indoors and cool —
+  // so playing one later needs no live transcription at all. See prefilter.ts for why
+  // this matters (thermal throttling in a summer pocket).
+  setDownloadCompletionHandler(prefilterEpisode)
+
   // Reconnect to playback that survived the WebView (the service outlives the page),
   // or put the last-listened episode back on screen if nothing is running. Restoring is
   // display-only — nothing is loaded or transcribed until play is pressed.
@@ -94,6 +101,9 @@ export async function bootstrap(): Promise<void> {
       await pruneStalePreviews()
       await refreshAndAutoDownload()
       await enforceStorageBudget()
+      // After refresh, so freshly auto-downloaded episodes are already queued by the
+      // completion handler and this only picks up the pre-existing backlog.
+      await prefilterDownloadedBacklog()
     } catch {
       // A failed background refresh must never block the app from starting.
     } finally {

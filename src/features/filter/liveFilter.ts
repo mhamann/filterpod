@@ -331,6 +331,11 @@ export function retargetLiveFilter(positionSec: number): void {
   void pump(session)
 }
 
+/** Whether a live session currently owns the transcriber. The prefilter yields to it. */
+export function liveFilterActive(): boolean {
+  return active !== null && !active.controller.signal.aborted
+}
+
 export function stopLiveFilter(): void {
   active?.controller.abort()
   active = null
