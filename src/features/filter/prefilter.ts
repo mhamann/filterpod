@@ -33,6 +33,18 @@ const queue: EpisodeId[] = []
 let running = false
 let activeController: AbortController | null = null
 
+/**
+ * When a cancel last arrived. The live session that caused it flips liveFilterActive
+ * a few awaits later, and the queue must not slip the next episode into that gap —
+ * observed in the field as a listener starved for eleven minutes behind a backlog
+ * build that started microseconds after their play press cancelled the previous one.
+ */
+let cancelledAtMs = 0
+const CANCEL_QUIET_MS = 60_000
+
+/** ASR window cap; the transcriber changes hands within one window of a cancel. */
+const PREFILTER_WINDOW_SEC = 120
+
 /** Queues a downloaded episode for ahead-of-time filtering. Deduplicated, serial. */
 export function prefilterEpisode(episodeId: EpisodeId): void {
   if (!queue.includes(episodeId)) queue.push(episodeId)
@@ -41,6 +53,7 @@ export function prefilterEpisode(episodeId: EpisodeId): void {
 
 /** Aborts the build in flight, freeing the native transcriber for live playback. */
 export function cancelActivePrefilter(): void {
+  cancelledAtMs = Date.now()
   activeController?.abort()
 }
 
@@ -55,9 +68,10 @@ async function run(): Promise<void> {
   running = true
   try {
     while (queue.length > 0) {
-      if (liveFilterActive()) {
-        // Someone is listening; the playhead's pipeline owns the transcriber. Drop
-        // the backlog rather than idle-loop — the startup sweep restores it.
+      if (liveFilterActive() || Date.now() - cancelledAtMs < CANCEL_QUIET_MS) {
+        // Someone is listening — or just pressed play and the session is still
+        // spinning up. The playhead's pipeline owns the transcriber. Drop the
+        // backlog rather than idle-loop — the startup sweep restores it.
         queue.length = 0
         return
       }
@@ -100,6 +114,7 @@ async function prefilterOne(episodeId: EpisodeId): Promise<void> {
       profile,
       overrides,
       model: settings.whisperModel,
+      maxWindowSec: PREFILTER_WINDOW_SEC,
       signal: controller.signal,
     })
     if (controller.signal.aborted) return

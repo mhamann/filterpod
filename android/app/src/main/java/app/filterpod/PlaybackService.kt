@@ -299,6 +299,9 @@ class PlaybackService : MediaSessionService() {
         listener?.onSkip(span)
     }
 
+    /** Set while playback is paused by [holdAtFrontier]; cleared by any human action. */
+    private var frontierHeld = false
+
     /** The native backstop: never play past the end of analyzed coverage. */
     private fun holdAtFrontier(exo: ExoPlayer) {
         if (analyzed.isEmpty() || !exo.isPlaying) return
@@ -313,7 +316,30 @@ class PlaybackService : MediaSessionService() {
                 "FilterPod",
                 "frontier hold at ${position}ms (coverage ends ${frontierMs}ms)",
             )
+            frontierHeld = true
             exo.pause()
+        }
+    }
+
+    /**
+     * Ends a native frontier hold once coverage has real runway again.
+     *
+     * The web guard normally pauses first and resumes itself, but when the native hold
+     * wins the race — a playhead landing inside the one-second gap between the two
+     * margins — nothing used to resume it: the web layer's catch-up state was never
+     * set, so its coverage-update resume never fired, and the pause read as "the app
+     * just stopped". Now the same span delivery that extends coverage ends the hold.
+     */
+    private fun maybeReleaseFrontierHold(exo: ExoPlayer) {
+        if (!frontierHeld) return
+        val position = exo.currentPosition
+        val frontierMs = analyzed.firstOrNull { position in it }?.last ?: return
+        val duration = exo.duration
+        val atEnd = duration > 0 && frontierMs >= duration - FRONTIER_MARGIN_MS
+        if (atEnd || frontierMs - position >= NATIVE_RESUME_RUNWAY_MS) {
+            android.util.Log.i("FilterPod", "frontier hold released; resuming")
+            frontierHeld = false
+            play()
         }
     }
 
@@ -383,6 +409,7 @@ class PlaybackService : MediaSessionService() {
         android.util.Log.i("FilterPod", "setSpans: ${next.size} span(s), ${analyzedRanges?.size ?: 0} analyzed range(s)")
         spans = next
         analyzedRanges?.let { analyzed = it }
+        player?.let { maybeReleaseFrontierHold(it) }
     }
 
     fun play() = onMain {
@@ -392,6 +419,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun pause() = onMain {
+        // A human pause outranks the pending auto-resume; staying paused is the ask.
+        frontierHeld = false
         player?.pause()
     }
 
@@ -492,8 +521,9 @@ class PlaybackService : MediaSessionService() {
     fun seekTo(positionMs: Long) = onMain {
         val exo = player ?: return@onMain
         // An explicit seek is the user choosing a position; resuming later must not
-        // second-guess it with a rewind.
+        // second-guess it with a rewind, nor may a stale frontier hold auto-resume it.
         pausedAtMs = 0
+        frontierHeld = false
         exo.seekTo(positionMs)
         // A scrub can land inside a flagged span; resolve it now rather than waiting
         // for the next tick, which would play a fragment of it.
@@ -605,6 +635,11 @@ class PlaybackService : MediaSessionService() {
         // Resumes from the notification, lock screen and Bluetooth route through the
         // same rewind-on-resume as the in-app button.
         override fun play() { this@PlaybackService.play() }
+        // And a pause from those surfaces cancels a pending frontier auto-resume.
+        override fun pause() {
+            frontierHeld = false
+            super.pause()
+        }
     }
 
     /** What [snapshot] answers with. Null episodeId cases resolve to a null snapshot. */
@@ -709,6 +744,9 @@ class PlaybackService : MediaSessionService() {
 
         /** Cap on the catch-up hold, in case the web layer dies without clearing it. */
         private const val CATCHUP_HOLD_TIMEOUT_MS = 15 * 60_000L
+
+        /** Runway required before a native frontier hold resumes; mirrors the web guard. */
+        private const val NATIVE_RESUME_RUNWAY_MS = 30_000L
 
         /**
          * How long a becoming-noisy pause stays willing to resume when a headset
