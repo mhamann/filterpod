@@ -41,6 +41,7 @@ const player = {
     calls.push('setRate')
   }),
   setSkipIncrements: vi.fn(async () => {}),
+  setCatchupHold: vi.fn(async () => {}),
   setFilterSpans: vi.fn(async (spans: FilterSpan[]) => {
     if (!serviceRunning) throw new Error('playback service is not running')
     calls.push(`setFilterSpans:${spans.length}`)

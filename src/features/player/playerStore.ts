@@ -702,6 +702,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
 })
 
+/*
+ * The catch-up wakelock follows the catchingUp flag. On Android, a paused player
+ * releases every lock it holds; without this, the CPU suspends mid-catch-up on a still
+ * phone and the pause becomes permanent until the screen wakes. Subscribed here rather
+ * than sprinkled at each set() site so no future catchingUp writer can forget it.
+ */
+let catchupHeld = false
+usePlayerStore.subscribe((state) => {
+  if (state.catchingUp !== catchupHeld) {
+    catchupHeld = state.catchingUp
+    void getPlatform()
+      .player.setCatchupHold(state.catchingUp)
+      .catch(() => {})
+  }
+})
+
 /**
  * Advances to the next queued episode when one finishes.
  *

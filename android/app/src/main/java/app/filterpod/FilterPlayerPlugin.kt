@@ -138,6 +138,15 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
         call.resolve()
     }
 
+    /** Holds/releases the catch-up wakelock; see PlaybackService.setCatchupHold. */
+    @PluginMethod
+    fun setCatchupHold(call: PluginCall) {
+        val active = call.getBoolean("active") ?: false
+        // Not an error when the service is down: clearing a hold that cannot exist.
+        service()?.setCatchupHold(active)
+        call.resolve()
+    }
+
     @PluginMethod
     fun setFilterSpans(call: PluginCall) {
         val array = call.getArray("spans")

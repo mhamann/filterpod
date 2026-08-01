@@ -250,6 +250,7 @@ function createNativePlayer(): PlayerPlatform {
     setRate: (rate) => FilterPlayer.setRate({ rate }),
     setSkipIncrements: (backSec, forwardSec) =>
       FilterPlayer.setSkipIncrements({ backSec, forwardSec }),
+    setCatchupHold: (active) => FilterPlayer.setCatchupHold({ active }),
     setFilterSpans: (spans, analyzedRanges) =>
       FilterPlayer.setFilterSpans({ spans: normalizeSpans(spans), analyzed: analyzedRanges }),
     onStatus(cb) {

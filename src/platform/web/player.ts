@@ -192,6 +192,10 @@ export function createWebPlayer(): PlayerPlatform {
       seekTo(positionSec)
     },
 
+    async setCatchupHold() {
+      // Browsers have no CPU suspend to hold off; the tab lives or dies on its own.
+    },
+
     async setRate(rate: number) {
       audio.playbackRate = rate
     },
