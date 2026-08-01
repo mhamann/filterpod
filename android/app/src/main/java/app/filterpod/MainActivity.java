@@ -17,7 +17,29 @@ public class MainActivity extends BridgeActivity {
 
         super.onCreate(savedInstanceState);
 
+        keepRendererAliveInBackground();
         requestNotificationPermission();
+    }
+
+    /**
+     * Keeps the WebView renderer running while the screen is off.
+     *
+     * The live-filter pipeline runs as JavaScript in the WebView's sandboxed renderer
+     * process — a *separate* process from this app, whose priority Android waives by
+     * default whenever the WebView is not visible. The OS freezer then stops it cold,
+     * foreground service or no: analysis halts, the playhead eats through its ~4-minute
+     * lead, and the frontier guard pauses playback. Screen on, renderer thaws, analysis
+     * catches up, playback resumes — which is exactly the maddening symptom reported
+     * ("stops in my pocket, resumes the moment I look at it").
+     *
+     * RENDERER_PRIORITY_IMPORTANT with waived=false binds the renderer to this app's
+     * (foreground-service) importance even when invisible, which keeps it running for
+     * precisely as long as filtering needs it.
+     */
+    private void keepRendererAliveInBackground() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return;
+        getBridge().getWebView().setRendererPriorityPolicy(
+                android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, /* waivedWhenNotVisible= */ false);
     }
 
     /**
