@@ -215,7 +215,8 @@ export function sortAndDedupe(words: TimedWord[]): TimedWord[] {
 export function toFilterMapRecord(
   episodeId: string,
   result: BuildResult,
-  durationSec?: number,
+  durationSec: number | undefined,
+  profileId: string,
 ): FilterMap {
   return {
     episodeId,
@@ -225,6 +226,9 @@ export function toFilterMapRecord(
     source: result.source,
     engineVersion: ENGINE_VERSION,
     wordlistVersion: WORDLIST_VERSION,
+    // Spans are profile-dependent; a record that omitted this would be discarded by
+    // the live pipeline's mismatch check the moment anyone pressed play.
+    profileId,
     progress: 1,
     createdAt: Date.now(),
     skippedSec: totalSkippedSec(result.spans),

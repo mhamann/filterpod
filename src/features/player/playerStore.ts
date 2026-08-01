@@ -26,6 +26,7 @@ import {
   stopLiveFilter,
   updateDurationSec,
 } from '@/features/filter/liveFilter'
+import { cancelActivePrefilter } from '@/features/filter/prefilter'
 
 /**
  * Playback controller.
@@ -401,6 +402,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     )
     await platform.player.setRate(settings.playbackRate)
     set({ loaded: true })
+
+    // The playhead's pipeline owns the transcriber; a background prefilter build in
+    // flight yields immediately rather than making the lead-in queue behind it.
+    cancelActivePrefilter()
 
     // Analyze a lead-in, then start; the rest is filtered while the audio plays.
     try {
