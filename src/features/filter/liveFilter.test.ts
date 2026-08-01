@@ -451,9 +451,9 @@ describe('publisher transcripts', () => {
     fetchTranscript.mockResolvedValue({
       words: null,
       cues: [
-        cue(0, 600, 'entirely fine'),
-        cue(600, 604, 'oh fuvg did you see that'),
-        cue(604, 1200, 'fine again'),
+        cue(0, 900, 'entirely fine'),
+        cue(900, 904, 'oh fuvg did you see that'),
+        cue(904, 1500, 'fine again'),
       ],
     })
 
@@ -468,10 +468,10 @@ describe('publisher transcripts', () => {
     // The clean stretch before the flagged cue is analyzed without transcribing it.
     expect(isAnalyzed(ranges, 300)).toBe(true)
     // The flagged cue is NOT — it is exactly what still needs a closer look.
-    expect(isAnalyzed(ranges, 601)).toBe(false)
+    expect(isAnalyzed(ranges, 901)).toBe(false)
 
-    // And nothing is transcribed yet: ten clean minutes is already far more cushion
-    // than the pipeline tries to keep, so the suspect window waits until it is near.
+    // And nothing is transcribed yet: fifteen clean minutes outruns even the widened
+    // lead target, so the suspect window waits until the playhead draws near.
     expect(transcribe).not.toHaveBeenCalled()
   })
 

@@ -51,6 +51,17 @@ const SAVE_INTERVAL_MS = 5_000
  */
 const FRONTIER_MARGIN_SEC = 2
 
+/**
+ * Runway required before a catch-up pause resumes on its own.
+ *
+ * Resuming the instant one chunk landed made a starved pipeline into a stutter: under
+ * thermal throttling, transcription produces coverage at roughly the rate playback
+ * consumes it, so play/pause alternated every half minute. Waiting for a real cushion
+ * turns that into one longer pause and then steady playback. A user pressing play
+ * personally is never held to this — it gates only the automatic resume.
+ */
+const RESUME_RUNWAY_SEC = 30
+
 interface PlayerState {
   episode: Episode | null
   podcast: Podcast | null
@@ -134,8 +145,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (get().episode?.id !== episodeId) return
       set({ spans: nextSpans, analyzedRanges: nextRanges })
       void getPlatform().player.setFilterSpans(nextSpans, nextRanges)
-      // New coverage may have unblocked a playhead that was waiting.
-      if (get().catchingUp) void get().play()
+
+      // New coverage may have unblocked a playhead that was waiting — but only resume
+      // once there is real runway (or the episode is analyzed to its end), so a
+      // pipeline running neck-and-neck with playback pauses once instead of stuttering.
+      if (get().catchingUp) {
+        const { positionSec, durationSec } = get()
+        const frontier = analyzedUntil(nextRanges, positionSec)
+        const atEnd = durationSec > 0 && frontier >= durationSec - FRONTIER_MARGIN_SEC
+        if (atEnd || frontier - positionSec >= RESUME_RUNWAY_SEC) void get().play()
+      }
     },
     onModelProgress: (fraction: number) => {
       if (get().episode?.id !== episodeId) return
