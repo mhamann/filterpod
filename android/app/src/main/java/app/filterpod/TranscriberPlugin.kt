@@ -8,9 +8,12 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -165,6 +168,23 @@ class TranscriberPlugin : Plugin() {
     /** Backstop so an abandoned transcription can never pin the CPU indefinitely. */
     private val WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L
 
+    /**
+     * Hard ceiling on one window's decode, enforced by thread interruption.
+     *
+     * The streamed decode path can wedge in ways no flag check reaches: a socket killed
+     * by doze mid-transfer blocks its read, and the cache's span locks wait with no
+     * timeout — field-measured as a 19-minute frozen pipeline that even waking the
+     * screen could not revive, with every retry queueing behind the wedged call on this
+     * serialized dispatcher. Interruption is the one lever that unblocks all of it:
+     * waits, socket reads, everything. A chunk that cannot decode inside a minute is a
+     * failed chunk, and failed chunks are what the retry-and-abandon machinery upstream
+     * was built for.
+     */
+    private val DECODE_TIMEOUT_MS = 60_000L
+
+    /** In-flight transcriptions by requestId, so cancel can interrupt, not just flag. */
+    private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+
     @PluginMethod
     fun transcribe(call: PluginCall) {
         val requestId = call.getString("requestId") ?: return call.reject("requestId is required")
@@ -175,7 +195,7 @@ class TranscriberPlugin : Plugin() {
         val flag = AtomicBoolean(false)
         cancelled[requestId] = flag
 
-        scope.launch(transcribeDispatcher) {
+        val job = scope.launch(transcribeDispatcher) {
             /*
              * A partial wakelock for the whole run. The manifest has declared WAKE_LOCK
              * with a comment promising exactly this since the beginning — but nothing
@@ -247,15 +267,20 @@ class TranscriberPlugin : Plugin() {
                     // no way to tell from the outside without this.
                     log("chunk ${startSec?.toInt()}-${endSec?.toInt()}s: decoding…")
                     val decodeStart = System.currentTimeMillis()
-                    val pcm = if (streaming) {
-                        // Opened per window: MediaExtractor holds the stream position, and
-                        // reusing one across chunks would have it seeking backwards through
-                        // the cache for no benefit.
-                        MediaCache.openForDecoding(context, streamUrl!!).use { source ->
-                            AudioDecoder.decodeWindow(source, fileKey, startSec, endSec)
+                    // Interruptible with a hard deadline; see DECODE_TIMEOUT_MS.
+                    val pcm = withTimeout(DECODE_TIMEOUT_MS) {
+                        runInterruptible {
+                            if (streaming) {
+                                // Opened per window: MediaExtractor holds the stream
+                                // position, and reusing one across chunks would have it
+                                // seeking backwards through the cache for no benefit.
+                                MediaCache.openForDecoding(context, streamUrl!!).use { source ->
+                                    AudioDecoder.decodeWindow(source, fileKey, startSec, endSec)
+                                }
+                            } else {
+                                AudioDecoder.decodeWindow(audio, startSec, endSec)
+                            }
                         }
-                    } else {
-                        AudioDecoder.decodeWindow(audio, startSec, endSec)
                     }
                     val decodeMs = System.currentTimeMillis() - decodeStart
                     log("chunk ${startSec?.toInt()}s: decoded ${pcm.size / 16000}s in ${decodeMs}ms, running asr on ${threadCount()} threads…")
@@ -320,10 +345,12 @@ class TranscriberPlugin : Plugin() {
                 call.reject(error.message ?: "transcription failed")
             } finally {
                 cancelled.remove(requestId)
+                jobs.remove(requestId)
                 if (wakeLock.isHeld) wakeLock.release()
                 if (wifiLock.isHeld) wifiLock.release()
             }
         }
+        jobs[requestId] = job
     }
 
     private fun parseWindows(array: JSArray?): List<Pair<Double?, Double?>> {
@@ -338,7 +365,13 @@ class TranscriberPlugin : Plugin() {
 
     @PluginMethod
     fun cancel(call: PluginCall) {
-        call.getString("requestId")?.let { cancelled[it]?.set(true) }
+        call.getString("requestId")?.let { requestId ->
+            cancelled[requestId]?.set(true)
+            // The flag is only consulted between windows; a wedged decode never gets
+            // there. Cancelling the job interrupts the worker thread, which is what
+            // actually unblocks a dead socket read or an untimed cache-lock wait.
+            jobs.remove(requestId)?.cancel()
+        }
         call.resolve()
     }
 

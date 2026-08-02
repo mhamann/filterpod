@@ -52,6 +52,10 @@ object MediaCache {
     /** Upstream fetcher. Redirects are followed because podcast enclosures are full of them. */
     private fun httpFactory() = DefaultHttpDataSource.Factory()
         .setAllowCrossProtocolRedirects(true)
+        // Explicit and short: a socket that doze killed mid-transfer must become an
+        // error the retry machinery can handle, never an indefinite block.
+        .setConnectTimeoutMs(10_000)
+        .setReadTimeoutMs(10_000)
         .setUserAgent("FilterPod")
 
     /** Cache-backed source factory, for ExoPlayer and for [openForDecoding] alike. */
