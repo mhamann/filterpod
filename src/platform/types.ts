@@ -130,6 +130,12 @@ export interface PlayerStatus {
   /** Seconds of flagged audio skipped so far this session. */
   skippedSec: number
   buffered: number
+  /**
+   * Playback is paused by the platform's own frontier guard. Surfaced so the web
+   * layer's catch-up machinery — wakelocks, auto-resume — engages even when the
+   * native guard wins the pause race and the web guard never fires.
+   */
+  frontierHeld?: boolean
   error?: string
 }
 

@@ -211,6 +211,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       // Keep the analysis frontier ahead of where we are.
       maybeResume(status.positionSec)
 
+      // The native guard can win the pause race; adopt its hold as our catch-up so
+      // the wakelocks and the runway-gated auto-resume engage. Without this the pause
+      // read as "the app just stopped" — no lock, no resume, until the screen woke.
+      if (status.frontierHeld && !get().catchingUp) {
+        set({ catchingUp: true })
+      }
+
       // The guard that makes partial analysis safe: never let the playhead cross into
       // audio nobody has looked at. Unanalyzed is unknown, not clean.
       const { analyzedRanges, catchingUp } = get()

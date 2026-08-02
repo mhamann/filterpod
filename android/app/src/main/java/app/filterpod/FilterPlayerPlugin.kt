@@ -260,6 +260,7 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
         durationMs: Long,
         skippedMs: Long,
         bufferedMs: Long,
+        frontierHeld: Boolean,
     ) {
         notifyListeners(
             "status",
@@ -268,7 +269,8 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
                 .put("positionSec", positionMs / 1000.0)
                 .put("durationSec", durationMs / 1000.0)
                 .put("skippedSec", skippedMs / 1000.0)
-                .put("buffered", bufferedMs / 1000.0),
+                .put("buffered", bufferedMs / 1000.0)
+                .put("frontierHeld", frontierHeld),
         )
     }
 }

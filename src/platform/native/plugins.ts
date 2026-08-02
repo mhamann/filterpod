@@ -52,6 +52,8 @@ export interface FilterPlayerPlugin {
       durationSec: number
       skippedSec: number
       buffered: number
+      /** The native guard paused at the coverage edge; catch-up must engage. */
+      frontierHeld?: boolean
       error?: string
     }) => void,
   ): Promise<PluginListenerHandle>

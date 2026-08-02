@@ -194,6 +194,18 @@ class TranscriberPlugin : Plugin() {
                 setReferenceCounted(false)
                 acquire(WAKE_LOCK_TIMEOUT_MS)
             }
+            // The radio too, not just the CPU: a streamed chunk's decode reads through
+            // the network cache, and with playback paused nothing else is holding wifi —
+            // doze cut it and the decode blocked until the screen woke. Field-measured
+            // as a thirteen-minute pause that ended the moment the phone was picked up.
+            val wifiManager = context.applicationContext
+                .getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val wifiLock = wifiManager.createWifiLock(
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "filterpod:transcribe-net",
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
             try {
                 // Step-by-step, because a single timing line at the end cannot say which
                 // stage is slow — and a stage that never returns logs nothing at all.
@@ -309,6 +321,7 @@ class TranscriberPlugin : Plugin() {
             } finally {
                 cancelled.remove(requestId)
                 if (wakeLock.isHeld) wakeLock.release()
+                if (wifiLock.isHeld) wifiLock.release()
             }
         }
     }

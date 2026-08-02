@@ -220,6 +220,7 @@ function createNativePlayer(): PlayerPlatform {
       durationSec: data.durationSec,
       skippedSec: data.skippedSec,
       buffered: data.buffered,
+      frontierHeld: data.frontierHeld,
       error: data.error,
     }
     for (const listener of statusListeners) listener(status)
