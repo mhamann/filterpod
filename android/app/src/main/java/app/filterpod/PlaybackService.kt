@@ -449,6 +449,16 @@ class PlaybackService : MediaSessionService() {
 
     fun setCatchupHold(active: Boolean) = onMain {
         if (active) {
+            /*
+             * Stay a real foreground service through the pause. Media3 demotes the
+             * service when playback stops, and with foreground status goes everything
+             * at once: the doze network exemption (wifi locks are ignored without it,
+             * which is why catch-up chunks kept failing), the process importance the
+             * WebView renderer is bound to, and immunity from process kill (a paused
+             * session died mid-catch-up in the field). The pipeline that ends the pause
+             * needs the same standing as the playback it serves.
+             */
+            promotePipelineForeground()
             if (catchupLock == null) {
                 val powerManager = getSystemService(android.content.Context.POWER_SERVICE)
                     as android.os.PowerManager
@@ -474,6 +484,52 @@ class PlaybackService : MediaSessionService() {
             catchupLock = null
             catchupWifiLock?.takeIf { it.isHeld }?.release()
             catchupWifiLock = null
+            demotePipelineForeground()
+        }
+    }
+
+    private fun promotePipelineForeground() {
+        val manager = getSystemService(android.content.Context.NOTIFICATION_SERVICE)
+            as android.app.NotificationManager
+        if (android.os.Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(PIPELINE_CHANNEL) == null
+        ) {
+            manager.createNotificationChannel(
+                android.app.NotificationChannel(
+                    PIPELINE_CHANNEL,
+                    "Filtering",
+                    android.app.NotificationManager.IMPORTANCE_LOW,
+                ),
+            )
+        }
+        val notification = androidx.core.app.NotificationCompat.Builder(this, PIPELINE_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_filterpod)
+            .setContentTitle("Checking the next stretch…")
+            .setOngoing(true)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+            .build()
+        androidx.core.app.ServiceCompat.startForeground(
+            this,
+            PIPELINE_NOTIFICATION_ID,
+            notification,
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            } else {
+                0
+            },
+        )
+    }
+
+    private fun demotePipelineForeground() {
+        // While playing, Media3 owns the foreground state under its own notification;
+        // demoting here would strip a playing service. Only step down when paused.
+        if (player?.isPlaying != true) {
+            androidx.core.app.ServiceCompat.stopForeground(
+                this,
+                androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE,
+            )
+        } else {
+            androidx.core.app.NotificationManagerCompat.from(this).cancel(PIPELINE_NOTIFICATION_ID)
         }
     }
 
@@ -767,6 +823,10 @@ class PlaybackService : MediaSessionService() {
 
         /** Cap on the catch-up hold, in case the web layer dies without clearing it. */
         private const val CATCHUP_HOLD_TIMEOUT_MS = 15 * 60_000L
+
+        /** The catch-up foreground notification; distinct from Media3's media one. */
+        private const val PIPELINE_CHANNEL = "filterpod-pipeline"
+        private const val PIPELINE_NOTIFICATION_ID = 0xF17
 
         /** Runway required before a native frontier hold resumes; mirrors the web guard. */
         private const val NATIVE_RESUME_RUNWAY_MS = 30_000L
