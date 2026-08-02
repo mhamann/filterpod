@@ -95,7 +95,14 @@ class PlaybackService : MediaSessionService() {
 
     interface PlaybackListener {
         fun onSkip(span: FilterSpan)
-        fun onStatus(state: String, positionMs: Long, durationMs: Long, skippedMs: Long, bufferedMs: Long)
+        fun onStatus(
+            state: String,
+            positionMs: Long,
+            durationMs: Long,
+            skippedMs: Long,
+            bufferedMs: Long,
+            frontierHeld: Boolean,
+        )
     }
 
     private var lastStatusAt = 0L
@@ -358,6 +365,9 @@ class PlaybackService : MediaSessionService() {
             if (exo.duration > 0) exo.duration else 0,
             skippedMs,
             exo.bufferedPosition,
+            // The web layer must know a pause is a native frontier hold, or its
+            // catch-up machinery — the wakelocks, the auto-resume — never engages.
+            frontierHeld,
         )
     }
 
@@ -435,6 +445,7 @@ class PlaybackService : MediaSessionService() {
      * layer's catchingUp state and time-capped in case that state is never cleared.
      */
     private var catchupLock: android.os.PowerManager.WakeLock? = null
+    private var catchupWifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
     fun setCatchupHold(active: Boolean) = onMain {
         if (active) {
@@ -447,10 +458,22 @@ class PlaybackService : MediaSessionService() {
                     setReferenceCounted(false)
                     acquire(CATCHUP_HOLD_TIMEOUT_MS)
                 }
+                // CPU and radio both: the catch-up is usually waiting on a streamed
+                // chunk, and ExoPlayer's own wifi lock left with the pause.
+                val wifiManager = applicationContext
+                    .getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                catchupWifiLock = wifiManager.createWifiLock(
+                    android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "filterpod:catchup-net",
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
             }
         } else {
             catchupLock?.takeIf { it.isHeld }?.release()
             catchupLock = null
+            catchupWifiLock?.takeIf { it.isHeld }?.release()
+            catchupWifiLock = null
         }
     }
 
