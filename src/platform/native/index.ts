@@ -7,13 +7,16 @@ import type {
   DownloadsPlatform,
   FilesPlatform,
   HttpPlatform,
+  LiveFilterPlatform,
+  NativeFilterSession,
   Platform,
   PlayerPlatform,
   PlayerStatus,
   StoredFile,
   TranscriberPlatform,
+  DocumentsPlatform,
 } from '../types'
-import { Downloader, FilterPlayer, Transcriber } from './plugins'
+import { BackupDocuments, Downloader, FilterPlayer, Transcriber } from './plugins'
 
 /** Episode audio and model weights live under this directory in app storage. */
 const DATA_DIR = Directory.Data
@@ -162,6 +165,20 @@ function createNativeFiles(): FilesPlatform {
     async requestPersistence() {
       // App-private storage on Android is not subject to eviction.
       return true
+    },
+  }
+}
+
+function createNativeDocuments(): DocumentsPlatform {
+  return {
+    async save(fileName, mimeType, contents) {
+      const result = await BackupDocuments.save({ fileName, mimeType, contents })
+      return !result.cancelled
+    },
+
+    async open(mimeTypes) {
+      const result = await BackupDocuments.open({ mimeTypes })
+      return result.cancelled ? null : (result.contents ?? null)
     },
   }
 }
@@ -342,11 +359,57 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
+function createNativeLiveFilter(): LiveFilterPlatform {
+  let updateListeners: Array<(session: NativeFilterSession) => void> = []
+  let progressListeners: Array<(fraction: number) => void> = []
+  let errorListeners: Array<(message: string) => void> = []
+
+  void FilterPlayer.addListener('filterUpdate', (data) => {
+    for (const listener of updateListeners) listener(data)
+  })
+  void FilterPlayer.addListener('filterModelProgress', (data) => {
+    for (const listener of progressListeners) listener(data.fraction)
+  })
+  void FilterPlayer.addListener('filterError', (data) => {
+    for (const listener of errorListeners) listener(data.message)
+  })
+
+  return {
+    start: (config) => FilterPlayer.startNativeFilter(config),
+    stop: () => FilterPlayer.stopNativeFilter(),
+    retarget: (positionSec) => FilterPlayer.retargetNativeFilter({ positionSec }),
+    isEngineActive: async () => {
+      const state = await FilterPlayer.getState().catch(() => null)
+      return state?.filtering === true
+    },
+    onUpdate(cb) {
+      updateListeners.push(cb)
+      return () => {
+        updateListeners = updateListeners.filter((l) => l !== cb)
+      }
+    },
+    onModelProgress(cb) {
+      progressListeners.push(cb)
+      return () => {
+        progressListeners = progressListeners.filter((l) => l !== cb)
+      }
+    },
+    onError(cb) {
+      errorListeners.push(cb)
+      return () => {
+        errorListeners = errorListeners.filter((l) => l !== cb)
+      }
+    },
+  }
+}
+
 export function createNativePlatform(): Platform {
   return {
     name: 'android',
+    liveFilter: createNativeLiveFilter(),
     http: createNativeHttp(),
     files: createNativeFiles(),
+    documents: createNativeDocuments(),
     downloads: createNativeDownloads(),
     player: createNativePlayer(),
     transcriber: createNativeTranscriber(),

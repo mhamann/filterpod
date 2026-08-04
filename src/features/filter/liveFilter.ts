@@ -566,30 +566,45 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * Uses a publisher transcript when one exists.
+ * What a publisher transcript settles before any ASR runs.
  *
- * Word-level transcripts settle the episode outright. Cue-level ones can prove it clean,
- * which is the best possible outcome: no ASR, no wait, no battery.
+ * Shared by both drivers: the TypeScript pump uses it in place, and the native-engine
+ * path (nativeSession.ts) uses it to compute seed coverage before handing the session
+ * to Kotlin — transcript fetching and parsing deliberately never crossed the bridge.
  */
-async function tryTranscriptShortcut(session: Session): Promise<boolean> {
-  if (session.episode.transcripts.length === 0) return false
+export interface TranscriptSeed {
+  spans: FilterSpan[]
+  ranges: AnalyzedRange[]
+  source: FilterMap['source']
+  /** True when the transcript settles the whole episode and no ASR is needed. */
+  complete: boolean
+}
 
-  const transcript = await fetchTranscript(session.episode.transcripts)
-  if (!transcript) return false
+export async function computeTranscriptSeed(
+  episode: Episode,
+  profile: FilterProfile,
+  overrides: WordOverride[],
+  durationSec: number,
+): Promise<TranscriptSeed | null> {
+  if (episode.transcripts.length === 0) return null
 
-  const compiled = compileWordlist(session.profile, session.overrides)
-  const fullRange = { startSec: 0, endSec: session.durationSec || Number.MAX_SAFE_INTEGER }
+  const transcript = await fetchTranscript(episode.transcripts)
+  if (!transcript) return null
+
+  const compiled = compileWordlist(profile, overrides)
+  const fullRange = { startSec: 0, endSec: durationSec || Number.MAX_SAFE_INTEGER }
 
   if (transcript.words && transcript.words.length > 0) {
     const matches = matchWords(sortAndDedupe(transcript.words), compiled)
-    session.spans = spansFromMatches(matches, session.profile, session.durationSec || undefined)
-    session.ranges = [fullRange]
-    await persist(session, 'ready', 'transcript-only')
-    session.callbacks.onUpdate(session.spans, session.ranges)
-    return true
+    return {
+      spans: spansFromMatches(matches, profile, durationSec || undefined),
+      ranges: [fullRange],
+      source: 'transcript-only',
+      complete: true,
+    }
   }
 
-  if (transcript.cues.length === 0) return false
+  if (transcript.cues.length === 0) return null
 
   // Cue timing is far too coarse to cut a single word, but it is plenty to tell which
   // stretches are worth transcribing. Everything the transcript covers and does not
@@ -609,11 +624,7 @@ async function tryTranscriptShortcut(session: Session): Promise<boolean> {
   })
 
   if (flagged.length === 0) {
-    session.spans = []
-    session.ranges = [fullRange]
-    await persist(session, 'ready', 'transcript-only')
-    session.callbacks.onUpdate(session.spans, session.ranges)
-    return true
+    return { spans: [], ranges: [fullRange], source: 'transcript-only', complete: true }
   }
 
   // Cues do not tile the timeline exactly; small gaps between them are silence, not
@@ -632,8 +643,39 @@ async function tryTranscriptShortcut(session: Session): Promise<boolean> {
   )
 
   // Analyzed = vouched for by the transcript, minus the bits that need a closer look.
-  session.ranges = mergeRanges([...session.ranges, ...subtractRanges(covered, suspect)])
-  await persist(session, 'partial', 'transcript-narrowed-asr')
+  return {
+    spans: [],
+    ranges: subtractRanges(covered, suspect),
+    source: 'transcript-narrowed-asr',
+    complete: false,
+  }
+}
+
+/**
+ * Uses a publisher transcript when one exists.
+ *
+ * Word-level transcripts settle the episode outright. Cue-level ones can prove it clean,
+ * which is the best possible outcome: no ASR, no wait, no battery.
+ */
+async function tryTranscriptShortcut(session: Session): Promise<boolean> {
+  const seed = await computeTranscriptSeed(
+    session.episode,
+    session.profile,
+    session.overrides,
+    session.durationSec,
+  )
+  if (!seed) return false
+
+  if (seed.complete) {
+    session.spans = seed.spans
+    session.ranges = seed.ranges
+    await persist(session, 'ready', seed.source)
+    session.callbacks.onUpdate(session.spans, session.ranges)
+    return true
+  }
+
+  session.ranges = mergeRanges([...session.ranges, ...seed.ranges])
+  await persist(session, 'partial', seed.source)
   session.callbacks.onUpdate(session.spans, session.ranges)
 
   // Not done — the suspect windows still need ASR — but the chunk pump will now skip

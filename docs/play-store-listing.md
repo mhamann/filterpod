@@ -34,7 +34,7 @@ is the only copy most people will read.
 |---|---|
 | `Coarse language, filtered out. Podcasts brewed clean, on your device.` | 68 |
 | `Podcasts with the coarse language filtered out — all on your device.` | 67 |
-| `Skips the swearing in your podcasts. Nothing ever leaves your phone.` | 67 |
+| `Skips swearing locally. Your podcast audio never leaves your phone.` | 67 |
 
 The first leans on the pun and the privacy claim together. The third is the plainest and
 would test better with people who have never heard of the app — worth considering if the
@@ -64,10 +64,13 @@ whole design.
 
 **Everything happens on your phone**
 
-There is no server. No account, no sign-up. No audio, transcript, or listening history
-leaves your device, because there is nowhere for it to go. Speech recognition runs locally
-using Whisper. Once the speech model is downloaded, filtering works with no connection at
-all.
+There is no FilterPod server. No account, no sign-up. Audio and transcripts never leave
+your device: speech recognition runs locally using Whisper. Once the speech model is
+downloaded, filtering works with no connection at all.
+
+Android can keep an encrypted backup of your subscriptions, settings and listening
+progress in your Google account, without uploading audio, transcripts or downloads. You
+can also export a portable backup file you control.
 
 **Choose how much to cut**
 
@@ -99,9 +102,10 @@ github.com/mhamann/filterpod
 Two things in the copy above are load-bearing and should not be softened into something
 untrue:
 
-**"Nothing leaves your device"** is literally true — there is no backend at all. Keep it as
-a statement of architecture, not a privacy-policy-shaped promise, because it is stronger
-than a promise: there is nowhere for the data to go.
+**"Audio and transcripts never leave your device"** is literally true — there is no
+filtering backend. Do not broaden that to "nothing leaves": Android's optional encrypted
+backup contains library choices, settings and listening progress, and users can explicitly
+export the same data to a document provider.
 
 **"Before you hear it"** holds because cuts are decided ahead of the playhead rather than
 on reaching the word. It is not a guarantee of perfection, and the listing should never
@@ -123,11 +127,12 @@ be a lie.
 
 ## Data safety form
 
-The honest answers are all "no": no data collected, no data shared, no data processed
-ephemerally by us (there is no "us" — no server). The form will still ask about network
-traffic; searches go to Apple's public podcast directory and audio comes from podcast
-hosts directly, neither of which is collection *by the developer*, which is what the form
-measures.
+There is still no data collected or shared by the developer: no backend or analytics
+receives it. Android Auto Backup is an operating-system service, and a manual export is a
+user-directed transfer to a document provider the user chooses. The privacy policy must
+nevertheless disclose both clearly. Recheck the current Play Console wording when filing
+the form; searches go to Apple's public podcast directory and audio comes from podcast
+hosts directly, neither of which is collection by the developer.
 
 ## Release checklist
 

@@ -1,6 +1,10 @@
 import { liveQuery } from 'dexie'
 import { getPlatform } from '@/platform'
-import { restoreLibraryBackupIfEmpty, writeLibraryBackup } from '@/data/backup'
+import {
+  restoreLibraryBackupIfEmpty,
+  startLibraryBackupWatcher,
+  writeLibraryBackup,
+} from '@/data/backup'
 import {
   getSettings,
   healEncodedTitles,
@@ -95,6 +99,9 @@ export async function bootstrap(): Promise<void> {
       if (await restoreLibraryBackupIfEmpty()) {
         console.info('FilterPod: library restored from native backup')
       }
+      // Start before feed refresh and backlog filtering: either can take a while, and
+      // progress/settings changes during that work must not wait for it to finish.
+      startLibraryBackupWatcher()
       // Old rows may hold entity-encoded titles that a 304-answering feed will never
       // re-deliver decoded; heal them in place. No-op after the first pass.
       await healEncodedTitles()
@@ -108,7 +115,10 @@ export async function bootstrap(): Promise<void> {
       // A failed background refresh must never block the app from starting.
     } finally {
       // Mirror the (possibly just-refreshed) library back to durable storage.
-      void writeLibraryBackup().catch(() => {})
+      await writeLibraryBackup().catch(() => {})
+      // Also covers the unlikely case where restore itself failed before the watcher
+      // could start. The watcher is a singleton, so this is harmless on the normal path.
+      startLibraryBackupWatcher()
     }
   })()
 }

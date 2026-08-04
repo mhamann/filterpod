@@ -53,6 +53,52 @@ class PlaybackService : MediaSessionService() {
     private var spans: List<FilterSpan> = emptyList()
     private var skippedMs: Long = 0
 
+    private val engineScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+    )
+
+    /**
+     * The native filter driver. Lives here — same process, same foreground standing,
+     * same doze exemptions as playback — which is the entire point of its existence;
+     * see LiveFilterEngine. Sessions are started and stopped by the web layer over the
+     * plugin, but once running the engine needs nothing from it.
+     */
+    val engine: LiveFilterEngine by lazy {
+        LiveFilterEngine(
+            applicationContext,
+            engineScope,
+            object : LiveFilterEngine.Listener {
+                override fun onUpdate(session: LiveFilterEngine.Snapshot) = onMain {
+                    // Straight into the skip loop — no bridge, no WebView, no waiting.
+                    spans = session.spans
+                        .filter { it.endSec > it.startSec }
+                        .map {
+                            FilterSpan(
+                                startMs = (it.startSec * 1000).toLong(),
+                                endMs = (it.endSec * 1000).toLong(),
+                                severity = it.severity,
+                                category = it.category,
+                            )
+                        }
+                        .sortedBy { it.startMs }
+                    analyzed = session.ranges.map {
+                        (it.startSec * 1000).toLong()..(it.endSec * 1000).toLong()
+                    }
+                    player?.let { maybeReleaseFrontierHold(it) }
+                    listener?.onFilterUpdate(session)
+                }
+
+                override fun onModelProgress(fraction: Double) {
+                    listener?.onFilterModelProgress(fraction)
+                }
+
+                override fun onError(message: String) {
+                    listener?.onFilterError(message)
+                }
+            },
+        )
+    }
+
     /**
      * Analyzed coverage, for the native frontier backstop.
      *
@@ -103,6 +149,9 @@ class PlaybackService : MediaSessionService() {
             bufferedMs: Long,
             frontierHeld: Boolean,
         )
+        fun onFilterUpdate(session: LiveFilterEngine.Snapshot)
+        fun onFilterModelProgress(fraction: Double)
+        fun onFilterError(message: String)
     }
 
     private var lastStatusAt = 0L
@@ -121,6 +170,12 @@ class PlaybackService : MediaSessionService() {
                 if (now - lastStatusAt >= STATUS_INTERVAL_MS) {
                     lastStatusAt = now
                     emitStatus(active)
+                    // The engine paces itself off the playhead, same as the TS driver
+                    // did off status events — but in-process, unfreezable.
+                    if (engine.isActive()) {
+                        engine.updatePosition(active.currentPosition / 1000.0)
+                        if (active.duration > 0) engine.updateDuration(active.duration / 1000.0)
+                    }
                 }
 
                 // The WebView's own progress saves freeze the moment it is backgrounded,
@@ -311,7 +366,16 @@ class PlaybackService : MediaSessionService() {
 
     /** The native backstop: never play past the end of analyzed coverage. */
     private fun holdAtFrontier(exo: ExoPlayer) {
-        if (analyzed.isEmpty() || !exo.isPlaying) return
+        if (!exo.isPlaying) return
+        /*
+         * Empty coverage means two different things depending on who is driving.
+         * Under the web driver, ranges arrive only after analysis starts and the web
+         * layer gates playback on the lead-in itself — an empty list here is "not my
+         * session to guard". Under the native engine there is no such gate: playback
+         * can start the instant load() returns, so an engine session with no coverage
+         * yet IS the frontier, at wherever the playhead sits.
+         */
+        if (analyzed.isEmpty() && !engine.isActive()) return
         val position = exo.currentPosition
         val frontierMs = analyzed.firstOrNull { position in it }?.last
             ?: position // outside all coverage: the frontier is here, pause now
@@ -324,6 +388,14 @@ class PlaybackService : MediaSessionService() {
                 "frontier hold at ${position}ms (coverage ends ${frontierMs}ms)",
             )
             frontierHeld = true
+            /*
+             * Do this before pausing. Waiting for the status event to cross into the
+             * WebView and come back through setCatchupHold() creates a deadlock when the
+             * display is off: Android can freeze that renderer in the hand-off gap, so
+             * the code responsible for acquiring these locks never runs. The native
+             * safety guard owns the pause, therefore it must own its liveness too.
+             */
+            updateCatchupProtection(true)
             exo.pause()
         }
     }
@@ -347,6 +419,9 @@ class PlaybackService : MediaSessionService() {
             android.util.Log.i("FilterPod", "frontier hold released; resuming")
             frontierHeld = false
             play()
+            // play() runs synchronously here on the main looper. Release only after it
+            // has restored playWhenReady, so there is no paused, unprotected hand-off.
+            updateCatchupProtection(false)
         }
     }
 
@@ -387,8 +462,12 @@ class PlaybackService : MediaSessionService() {
     fun load(url: String, title: String, artist: String, artworkUrl: String?, startAtMs: Long, episodeId: String? = null) = onMain {
         val exo = player ?: return@onMain
         skippedMs = 0
-        currentEpisodeId = episodeId
         pausedAtMs = 0
+        // A different episode invalidates the running filter session; the web layer
+        // starts a fresh one after load. Same-episode reloads keep it — tearing down
+        // costs the chunk in flight.
+        if (episodeId != currentEpisodeId) engine.stop()
+        currentEpisodeId = episodeId
 
         // The URI and whether it actually resolves. "Source error" from ExoPlayer says
         // nothing about which of those two failed.
@@ -414,6 +493,13 @@ class PlaybackService : MediaSessionService() {
 
     /** Also main-thread: the ticker reads this list, so writing it elsewhere races. */
     fun setSpans(next: List<FilterSpan>, analyzedRanges: List<LongRange>? = null) = onMain {
+        // While the native engine drives, it is the sole writer of spans and coverage;
+        // a web-layer push here would be stale state from a mirror overwriting the
+        // source of truth.
+        if (engine.isActive()) {
+            android.util.Log.i("FilterPod", "setSpans ignored: engine session active")
+            return@onMain
+        }
         // Logged because "the UI counted cuts but nothing was skipped" is otherwise
         // indistinguishable from "the spans never arrived", and they have different fixes.
         android.util.Log.i("FilterPod", "setSpans: ${next.size} span(s), ${analyzedRanges?.size ?: 0} analyzed range(s)")
@@ -431,6 +517,7 @@ class PlaybackService : MediaSessionService() {
     fun pause() = onMain {
         // A human pause outranks the pending auto-resume; staying paused is the ask.
         frontierHeld = false
+        updateCatchupProtection(false)
         player?.pause()
     }
 
@@ -446,91 +533,96 @@ class PlaybackService : MediaSessionService() {
      */
     private var catchupLock: android.os.PowerManager.WakeLock? = null
     private var catchupWifiLock: android.net.wifi.WifiManager.WifiLock? = null
+    private var catchupProtectionRequested = false
 
     fun setCatchupHold(active: Boolean) = onMain {
+        updateCatchupProtection(active)
+    }
+
+    /** Main-thread implementation shared by the WebView request and native frontier. */
+    @UnstableApi
+    private fun updateCatchupProtection(active: Boolean) {
+        val wasRequested = catchupProtectionRequested
+        if (!active && !wasRequested && catchupLock == null && catchupWifiLock == null) return
+        if (
+            active && wasRequested &&
+            catchupLock?.isHeld == true && catchupWifiLock?.isHeld == true
+        ) return
+
+        catchupProtectionRequested = active
         if (active) {
-            /*
-             * Stay a real foreground service through the pause. Media3 demotes the
-             * service when playback stops, and with foreground status goes everything
-             * at once: the doze network exemption (wifi locks are ignored without it,
-             * which is why catch-up chunks kept failing), the process importance the
-             * WebView renderer is bound to, and immunity from process kill (a paused
-             * session died mid-catch-up in the field). The pipeline that ends the pause
-             * needs the same standing as the playback it serves.
-             */
-            promotePipelineForeground()
-            if (catchupLock == null) {
+            if (catchupLock?.isHeld != true) {
                 val powerManager = getSystemService(android.content.Context.POWER_SERVICE)
                     as android.os.PowerManager
-                catchupLock = powerManager.newWakeLock(
-                    android.os.PowerManager.PARTIAL_WAKE_LOCK, "filterpod:catchup",
+                val lock = catchupLock ?: powerManager.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                    "filterpod:catchup",
                 ).apply {
                     setReferenceCounted(false)
-                    acquire(CATCHUP_HOLD_TIMEOUT_MS)
                 }
-                // CPU and radio both: the catch-up is usually waiting on a streamed
-                // chunk, and ExoPlayer's own wifi lock left with the pause.
+                lock.acquire(CATCHUP_HOLD_TIMEOUT_MS)
+                catchupLock = lock
+            }
+            if (catchupWifiLock?.isHeld != true) {
+                // CPU and radio both: catch-up is usually reading a streamed chunk, and
+                // ExoPlayer's own wifi lock leaves with the pause.
                 val wifiManager = applicationContext
                     .getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-                catchupWifiLock = wifiManager.createWifiLock(
-                    android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "filterpod:catchup-net",
+                val lock = catchupWifiLock ?: wifiManager.createWifiLock(
+                    android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                    "filterpod:catchup-net",
                 ).apply {
                     setReferenceCounted(false)
-                    acquire()
                 }
+                lock.acquire()
+                catchupWifiLock = lock
             }
+            android.util.Log.i("FilterPod", "catch-up protection acquired")
         } else {
             catchupLock?.takeIf { it.isHeld }?.release()
             catchupLock = null
             catchupWifiLock?.takeIf { it.isHeld }?.release()
             catchupWifiLock = null
-            demotePipelineForeground()
+            android.util.Log.i("FilterPod", "catch-up protection released")
+        }
+
+        /*
+         * Do not eagerly call Media3's notification updater when protection starts.
+         * Playback is already foreground at that point, and trying to startForeground
+         * again from a locked/background app is rejected on current Android. Media3's
+         * own delayed demotion reaches the override below, which is the safe place to
+         * keep foreground standing. When protection ends while still paused, however,
+         * it is safe and necessary to let Media3 step down without waiting for another
+         * player event.
+         */
+        if (!active) {
+            val playbackNeedsForeground = player?.let {
+                it.playWhenReady &&
+                    (it.playbackState == Player.STATE_READY || it.playbackState == Player.STATE_BUFFERING)
+            } == true
+            val mediaSession = session
+            if (!playbackNeedsForeground && mediaSession != null) {
+                super.onUpdateNotification(mediaSession, false)
+            }
         }
     }
 
-    private fun promotePipelineForeground() {
-        val manager = getSystemService(android.content.Context.NOTIFICATION_SERVICE)
-            as android.app.NotificationManager
-        if (android.os.Build.VERSION.SDK_INT >= 26 &&
-            manager.getNotificationChannel(PIPELINE_CHANNEL) == null
-        ) {
-            manager.createNotificationChannel(
-                android.app.NotificationChannel(
-                    PIPELINE_CHANNEL,
-                    "Filtering",
-                    android.app.NotificationManager.IMPORTANCE_LOW,
-                ),
-            )
+    /**
+     * Media3 normally leaves the foreground ten minutes after a pause. A frontier pause
+     * is not an idle player: filtering is active and is the only thing that can make the
+     * player audible again. Force Media3's own notification to remain the foreground
+     * notification until that work has handed back to playback.
+     */
+    @UnstableApi
+    override fun onUpdateNotification(
+        session: MediaSession,
+        startInForegroundRequired: Boolean,
+    ) {
+        val requiredForCatchup = catchupProtectionRequested || frontierHeld
+        if (requiredForCatchup && !startInForegroundRequired) {
+            android.util.Log.i("FilterPod", "keeping media service foreground for catch-up")
         }
-        val notification = androidx.core.app.NotificationCompat.Builder(this, PIPELINE_CHANNEL)
-            .setSmallIcon(R.drawable.ic_stat_filterpod)
-            .setContentTitle("Checking the next stretch…")
-            .setOngoing(true)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
-            .build()
-        androidx.core.app.ServiceCompat.startForeground(
-            this,
-            PIPELINE_NOTIFICATION_ID,
-            notification,
-            if (android.os.Build.VERSION.SDK_INT >= 29) {
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            } else {
-                0
-            },
-        )
-    }
-
-    private fun demotePipelineForeground() {
-        // While playing, Media3 owns the foreground state under its own notification;
-        // demoting here would strip a playing service. Only step down when paused.
-        if (player?.isPlaying != true) {
-            androidx.core.app.ServiceCompat.stopForeground(
-                this,
-                androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE,
-            )
-        } else {
-            androidx.core.app.NotificationManagerCompat.from(this).cancel(PIPELINE_NOTIFICATION_ID)
-        }
+        super.onUpdateNotification(session, startInForegroundRequired || requiredForCatchup)
     }
 
     /** Wall-clock of the becoming-noisy pause the pending headset resume belongs to. */
@@ -607,6 +699,8 @@ class PlaybackService : MediaSessionService() {
         // A scrub can land inside a flagged span; resolve it now rather than waiting
         // for the next tick, which would play a fragment of it.
         spans.spanAt(positionMs)?.let { exo.seekTo(it.endMs) }
+        // Point the pipeline at the new spot, cancelling work for the old one.
+        if (engine.isActive()) engine.retarget(positionMs / 1000.0)
     }
 
     fun setRate(rate: Float) = onMain {
@@ -717,6 +811,7 @@ class PlaybackService : MediaSessionService() {
         // And a pause from those surfaces cancels a pending frontier auto-resume.
         override fun pause() {
             frontierHeld = false
+            updateCatchupProtection(false)
             super.pause()
         }
     }
@@ -770,6 +865,8 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         // The last position must outlive the service, or a kill while paused loses it.
         player?.let { journalPosition(it) }
+        engine.stop()
+        engineScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         disarmHeadsetResume()
         setCatchupHold(false)
         handler.removeCallbacks(ticker)
@@ -823,10 +920,6 @@ class PlaybackService : MediaSessionService() {
 
         /** Cap on the catch-up hold, in case the web layer dies without clearing it. */
         private const val CATCHUP_HOLD_TIMEOUT_MS = 15 * 60_000L
-
-        /** The catch-up foreground notification; distinct from Media3's media one. */
-        private const val PIPELINE_CHANNEL = "filterpod-pipeline"
-        private const val PIPELINE_NOTIFICATION_ID = 0xF17
 
         /** Runway required before a native frontier hold resumes; mirrors the web guard. */
         private const val NATIVE_RESUME_RUNWAY_MS = 30_000L

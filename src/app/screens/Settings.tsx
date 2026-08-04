@@ -4,8 +4,10 @@ import clsx from 'clsx'
 import { db, type WordOverride } from '@/data/db'
 import { DEFAULT_PROFILES } from '@/data/defaults'
 import { updateSettings } from '@/data/repo'
+import { exportLibraryBackup, importLibraryBackup } from '@/data/backup'
 import { getPlatform } from '@/platform'
 import { useModelStore } from '@/features/filter/modelStore'
+import { refreshAndAutoDownload } from '@/features/subscriptions/service'
 import { Button, Pill, ProgressBar } from '@/ui/components'
 import { Icon } from '@/ui/Icon'
 import { bytes } from '@/ui/format'
@@ -117,8 +119,9 @@ export function Settings() {
         <ModelReadiness model={settings.whisperModel} />
 
         <p className="px-4 pb-3 text-[12px] leading-relaxed text-ink-600">
-          Everything runs on this device. No audio, transcript or listening history ever
-          leaves it — FilterPod has no server.
+          Filtering runs on this device. Audio and transcripts never leave it. If Android
+          backup is enabled, an encrypted copy of your library, settings and listening
+          progress can be stored in your Google account; FilterPod has no server.
         </p>
       </Group>
 
@@ -174,6 +177,8 @@ export function Settings() {
         </div>
       </Group>
 
+      <BackupAndRestore />
+
       <Group label="About">
         <div className="space-y-2 px-4 py-3">
           <div className="flex items-center justify-between">
@@ -215,6 +220,98 @@ export function Settings() {
       </Group>
     </div>
   )
+}
+
+function BackupAndRestore() {
+  const platform = getPlatform()
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null)
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null)
+
+  const exportBackup = async () => {
+    setBusy('export')
+    setMessage(null)
+    try {
+      const saved = await exportLibraryBackup()
+      setMessage(saved ? { text: 'Backup saved.' } : null)
+    } catch (error) {
+      setMessage({ text: messageFor(error, 'Could not export the backup.'), error: true })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const importBackup = async () => {
+    setBusy('import')
+    setMessage(null)
+    try {
+      const result = await importLibraryBackup()
+      if (result.cancelled) return
+      // Imported subscriptions carry stable feed URLs. Refresh immediately so their
+      // episode and podcast rows are usable without requiring an app restart.
+      const refreshed = await refreshAndAutoDownload().then(
+        () => true,
+        () => false,
+      )
+      setMessage({
+        text: `Restored ${result.subscriptions} ${result.subscriptions === 1 ? 'subscription' : 'subscriptions'} and ${result.progress} listening ${result.progress === 1 ? 'position' : 'positions'}.${refreshed ? '' : ' Feed refresh will retry when you are online.'}`,
+      })
+    } catch (error) {
+      setMessage({ text: messageFor(error, 'Could not import the backup.'), error: true })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Group label="Backup & restore">
+      <div className="px-4 py-3">
+        <p className="text-[13px] leading-relaxed text-ink-500">
+          {platform.name === 'android'
+            ? 'Android automatically backs up the compact library snapshot when system backup is enabled. Audio, speech models and generated filter data are rebuilt instead.'
+            : 'Save a portable copy of your library, listening progress and settings.'}
+        </p>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-ink-600">
+          Export creates a JSON file you control and can keep in Drive. Import merges
+          subscriptions, keeps newer progress already on this device, and restores the
+          saved queue only when the current queue is empty.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            icon="upload"
+            disabled={busy !== null}
+            onClick={() => void exportBackup()}
+          >
+            {busy === 'export' ? 'Saving…' : 'Export backup'}
+          </Button>
+          <Button
+            variant="secondary"
+            icon="download"
+            disabled={busy !== null}
+            onClick={() => void importBackup()}
+          >
+            {busy === 'import' ? 'Restoring…' : 'Import backup'}
+          </Button>
+        </div>
+        {message && (
+          <p
+            className={clsx(
+              'mt-3 rounded-lg px-3 py-2 text-[12px] ring-1',
+              message.error
+                ? 'bg-alarm-500/10 text-alarm-400 ring-alarm-500/25'
+                : 'bg-sage-500/10 text-sage-300 ring-sage-500/25',
+            )}
+          >
+            {message.text}
+          </p>
+        )}
+      </div>
+    </Group>
+  )
+}
+
+function messageFor(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
 }
 
 /**

@@ -20,8 +20,8 @@ vi.mock('@/platform', () => ({
 }))
 
 let liveActive = false
-vi.mock('./liveFilter', () => ({
-  liveFilterActive: () => liveActive,
+vi.mock('./filterDriver', () => ({
+  filterPipelineActive: async () => liveActive,
 }))
 
 const { db } = await import('@/data/db')

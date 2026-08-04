@@ -11,7 +11,7 @@ import {
 } from '@/data/repo'
 import { fileKeyFor } from '@/features/downloads/downloadManager'
 import { buildFilterMap, isStale, toFilterMapRecord } from './buildFilterMap'
-import { liveFilterActive } from './liveFilter'
+import { filterPipelineActive } from './filterDriver'
 
 /**
  * Filters downloaded episodes ahead of time, so playing one needs no live ASR at all.
@@ -34,7 +34,7 @@ let running = false
 let activeController: AbortController | null = null
 
 /**
- * When a cancel last arrived. The live session that caused it flips liveFilterActive
+ * When a cancel last arrived. The live session that caused it flips filterPipelineActive
  * a few awaits later, and the queue must not slip the next episode into that gap —
  * observed in the field as a listener starved for eleven minutes behind a backlog
  * build that started microseconds after their play press cancelled the previous one.
@@ -68,7 +68,7 @@ async function run(): Promise<void> {
   running = true
   try {
     while (queue.length > 0) {
-      if (liveFilterActive() || Date.now() - cancelledAtMs < CANCEL_QUIET_MS) {
+      if ((await filterPipelineActive()) || Date.now() - cancelledAtMs < CANCEL_QUIET_MS) {
         // Someone is listening — or just pressed play and the session is still
         // spinning up. The playhead's pipeline owns the transcriber. Drop the
         // backlog rather than idle-loop — the startup sweep restores it.

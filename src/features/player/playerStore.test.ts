@@ -260,6 +260,42 @@ describe('restoring the last episode', () => {
   })
 })
 
+describe('catch-up handoff', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    usePlayerStore.setState({
+      episode,
+      loaded: true,
+      state: 'paused',
+      positionSec: 10,
+      durationSec: 3600,
+      analyzedRanges: [{ startSec: 0, endSec: 60 }],
+      catchingUp: true,
+    })
+  })
+
+  it('keeps catch-up protection until native playback has resumed', async () => {
+    let finishPlay!: () => void
+    player.play.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishPlay = resolve }),
+    )
+
+    const resuming = usePlayerStore.getState().play()
+    expect(usePlayerStore.getState().catchingUp).toBe(true)
+
+    finishPlay()
+    await resuming
+    expect(usePlayerStore.getState().catchingUp).toBe(false)
+  })
+
+  it('lets an explicit pause cancel an analysis-driven auto-resume', async () => {
+    await usePlayerStore.getState().pause()
+
+    expect(usePlayerStore.getState().catchingUp).toBe(false)
+    expect(player.pause).toHaveBeenCalledOnce()
+  })
+})
+
 describe('the queue', () => {
   beforeEach(() => {
     calls.length = 0
