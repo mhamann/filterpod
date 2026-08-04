@@ -1,25 +1,46 @@
 # FilterPod Privacy Policy
 
-*Last updated: July 28, 2026*
+*Last updated: August 2, 2026*
 
 FilterPod does not collect your data. There is no FilterPod server, no account, no
 analytics, no advertising SDK, and no crash reporting. Nothing you do in the app is
 transmitted to us — we have no way to receive it.
 
-## What stays on your device
+## What FilterPod stores
 
-Everything the app knows about you lives only on your device:
+FilterPod stores the following in its private application storage:
 
 - Your subscriptions, listening progress, queue, and settings.
 - Downloaded and streamed episode audio.
 - Episode transcriptions. Filtering works by transcribing audio **on your device**
   using a local speech-recognition model. Audio is never sent anywhere for analysis.
 
-Uninstalling the app deletes all of it.
+Uninstalling deletes the on-device copy. Downloaded audio, episode transcriptions,
+speech-model files, artwork, and generated filtering data are never included in a
+FilterPod backup.
+
+## Android backup and device transfer
+
+When Android system backup is enabled and the device supports encrypted backup, Android
+may store a compact FilterPod backup in the user's Google account. It contains only:
+
+- Subscriptions and the podcast metadata needed to fetch them again.
+- Listening progress and queue.
+- Settings, filter profiles, and user-added blocked or allowed words.
+
+Android controls when that backup is made and restored. It is protected by the user's
+Google Account credentials and, on supported devices, the device screen lock. FilterPod's
+developer cannot access it. Android may restore it when the app is reinstalled or moved
+to another Android device.
+
+Settings also offers **Export backup**, which writes the same compact data to a document
+location the user chooses, such as Downloads or Google Drive. That document remains under
+the user's control and may remain after uninstall. **Import backup** reads only a document
+the user explicitly selects.
 
 ## Network requests the app makes
 
-FilterPod talks to exactly two kinds of third parties, both only on your instruction:
+FilterPod itself talks to these third parties only to provide requested app functionality:
 
 1. **Apple's public podcast directory** (`itunes.apple.com`,
    `rss.marketingtools.apple.com`) — when you search for or browse podcasts. Your
@@ -29,8 +50,11 @@ FilterPod talks to exactly two kinds of third parties, both only on your instruc
    audio you play. As with every podcast app, the publisher (or their hosting
    provider) sees a standard HTTP request: your IP address and the app's user agent.
 
-That is the complete list. The speech-recognition model is downloaded once from the
-app's own release assets on GitHub.
+3. **GitHub release assets** — to download the speech-recognition model selected in the
+   app. The model runs locally after download.
+
+Android's operating-system backup service may separately transfer the compact backup
+described above according to the user's Android and Google backup settings.
 
 ## Children
 

@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import type { Platform } from './types'
 import { createWebHttp } from './web/http'
 import { createWebFiles } from './web/files'
+import { createWebDocuments } from './web/documents'
 import { createWebDownloads } from './web/downloads'
 import { createWebPlayer } from './web/player'
 import { createWebTranscriber } from './web/transcriber'
@@ -24,6 +25,7 @@ function createWebPlatform(): Platform {
     name: 'web',
     http: createWebHttp(),
     files,
+    documents: createWebDocuments(),
     downloads: createWebDownloads(files),
     player: createWebPlayer(),
     transcriber: createWebTranscriber(files),

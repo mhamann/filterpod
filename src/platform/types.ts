@@ -65,6 +65,23 @@ export interface FilesPlatform {
 }
 
 // ---------------------------------------------------------------------------
+// User-owned documents
+// ---------------------------------------------------------------------------
+
+export interface DocumentsPlatform {
+  /**
+   * Opens the platform's save picker. Returns false when the user cancels.
+   *
+   * This is deliberately separate from [FilesPlatform]: those files live inside the
+   * app sandbox and disappear on uninstall, while documents belong to the user and can
+   * live in Drive, Downloads, or any other provider exposed by the system picker.
+   */
+  save(fileName: string, mimeType: string, contents: string): Promise<boolean>
+  /** Opens a user-selected text document, or null when the picker is cancelled. */
+  open(mimeTypes: string[]): Promise<string | null>
+}
+
+// ---------------------------------------------------------------------------
 // Downloads
 // ---------------------------------------------------------------------------
 
@@ -204,6 +221,67 @@ export interface PlayerPlatform {
 }
 
 // ---------------------------------------------------------------------------
+// Live filtering (native driver)
+// ---------------------------------------------------------------------------
+
+/** What the native filter engine reports about its session. */
+export interface NativeFilterSession {
+  episodeId: string
+  profileId: string
+  spans: FilterSpan[]
+  /** Playable coverage: analyzed plus abandoned stretches, for the frontier. */
+  analyzedRanges: AnalyzedRange[]
+  /** Honestly analyzed coverage — the only ranges that may be persisted. */
+  persistableRanges: AnalyzedRange[]
+  durationSec: number
+  source: string
+  reachedEnd: boolean
+}
+
+/**
+ * The natively-hosted just-in-time filter pipeline. Android only.
+ *
+ * Present when the platform can run the chunk pump inside the playback service's
+ * process — the same process, foreground standing and doze exemptions as the audio it
+ * guards. Absent in the browser, where the TypeScript driver (liveFilter.ts) remains
+ * the implementation. Wordlist compilation stays in TypeScript either way; `start`
+ * carries the compiled result across once per session.
+ */
+export interface LiveFilterPlatform {
+  start(config: {
+    episodeId: string
+    fileKey: string
+    url?: string
+    model: string
+    profileId: string
+    padBeforeSec: number
+    padAfterSec: number
+    mergeGapSec: number
+    wordlist: unknown
+    startAtSec: number
+    durationSec: number
+    engineVersion: string
+    wordlistVersion: string
+    seedSpans: FilterSpan[]
+    seedRanges: AnalyzedRange[]
+    source: string
+  }): Promise<void>
+  stop(): Promise<void>
+  retarget(positionSec: number): Promise<void>
+  /**
+   * Whether the engine is pumping right now, asked of the engine itself.
+   *
+   * Distinct from any web-side notion of "active" because the engine outlives this
+   * page: a freshly reloaded WebView has no session state yet while the service is
+   * mid-episode, and the prefilter must yield to that session it cannot see.
+   */
+  isEngineActive(): Promise<boolean>
+  onUpdate(cb: (session: NativeFilterSession) => void): () => void
+  onModelProgress(cb: (fraction: number) => void): () => void
+  onError(cb: (message: string) => void): () => void
+}
+
+// ---------------------------------------------------------------------------
 // Transcription
 // ---------------------------------------------------------------------------
 
@@ -263,10 +341,13 @@ export interface Platform {
   name: 'web' | 'android'
   http: HttpPlatform
   files: FilesPlatform
+  documents: DocumentsPlatform
   downloads: DownloadsPlatform
   player: PlayerPlatform
   transcriber: TranscriberPlatform
   haptics: HapticsPlatform
+  /** Present only where the pipeline can live beside playback; see the interface. */
+  liveFilter?: LiveFilterPlatform
   /** True when playback and skipping survive the screen being off. */
   supportsBackgroundPlayback: boolean
 }

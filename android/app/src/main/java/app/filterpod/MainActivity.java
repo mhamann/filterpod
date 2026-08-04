@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FilterPlayerPlugin.class);
         registerPlugin(DownloaderPlugin.class);
         registerPlugin(TranscriberPlugin.class);
+        registerPlugin(BackupDocumentsPlugin.class);
 
         evictServiceWorker();
 

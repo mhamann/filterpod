@@ -28,6 +28,10 @@ export interface FilterPlayerPlugin {
     durationSec?: number
     skippedSec?: number
     lastSaved?: { episodeId: string; positionSec: number; updatedAt: number }
+    /** True while the in-service filter engine is pumping. */
+    filtering?: boolean
+    /** The engine's current snapshot, when `filtering` is set. */
+    filterSession?: unknown
   }>
   seek(options: { positionSec: number }): Promise<void>
   setRate(options: { rate: number }): Promise<void>
@@ -35,6 +39,27 @@ export interface FilterPlayerPlugin {
   setSkipIncrements(options: { backSec: number; forwardSec: number }): Promise<void>
   /** One crisp EFFECT_TICK, for gesture detents. */
   hapticTick(): Promise<void>
+  /** Starts the in-service filter driver; the wordlist arrives pre-compiled. */
+  startNativeFilter(options: {
+    episodeId: string
+    fileKey: string
+    url?: string
+    model: string
+    profileId: string
+    padBeforeSec: number
+    padAfterSec: number
+    mergeGapSec: number
+    wordlist: unknown
+    startAtSec: number
+    durationSec: number
+    engineVersion: string
+    wordlistVersion: string
+    seedSpans: unknown[]
+    seedRanges: unknown[]
+    source: string
+  }): Promise<void>
+  stopNativeFilter(): Promise<void>
+  retargetNativeFilter(options: { positionSec: number }): Promise<void>
   /** Holds the CPU awake during a catch-up pause, so analysis can end it. */
   setCatchupHold(options: { active: boolean }): Promise<void>
   /** Spans are evaluated on a native handler, so skipping survives the screen going off. */
@@ -58,6 +83,27 @@ export interface FilterPlayerPlugin {
     }) => void,
   ): Promise<PluginListenerHandle>
   addListener(event: 'skip', cb: (data: { span: FilterSpan }) => void): Promise<PluginListenerHandle>
+  addListener(
+    event: 'filterUpdate',
+    cb: (data: {
+      episodeId: string
+      profileId: string
+      spans: FilterSpan[]
+      analyzedRanges: Array<{ startSec: number; endSec: number }>
+      persistableRanges: Array<{ startSec: number; endSec: number }>
+      durationSec: number
+      source: string
+      reachedEnd: boolean
+    }) => void,
+  ): Promise<PluginListenerHandle>
+  addListener(
+    event: 'filterModelProgress',
+    cb: (data: { fraction: number }) => void,
+  ): Promise<PluginListenerHandle>
+  addListener(
+    event: 'filterError',
+    cb: (data: { message: string }) => void,
+  ): Promise<PluginListenerHandle>
 }
 
 export interface DownloaderPlugin {
@@ -98,6 +144,16 @@ export interface TranscriberPlugin {
   ): Promise<PluginListenerHandle>
 }
 
+export interface BackupDocumentsPlugin {
+  save(options: {
+    fileName: string
+    mimeType: string
+    contents: string
+  }): Promise<{ cancelled: boolean }>
+  open(options: { mimeTypes: string[] }): Promise<{ cancelled: boolean; contents?: string }>
+}
+
 export const FilterPlayer = registerPlugin<FilterPlayerPlugin>('FilterPlayer')
 export const Downloader = registerPlugin<DownloaderPlugin>('Downloader')
 export const Transcriber = registerPlugin<TranscriberPlugin>('Transcriber')
+export const BackupDocuments = registerPlugin<BackupDocumentsPlugin>('BackupDocuments')

@@ -117,6 +117,9 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion"
 
     testImplementation "junit:junit:$junitVersion"
+    // Real org.json for JVM unit tests — the Android SDK's copy is stubbed out there,
+    // and the filter parity tests parse their golden fixtures with it.
+    testImplementation "org.json:json:20240303"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

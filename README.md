@@ -2,8 +2,10 @@
 
 **Coarse language, filtered out.**
 
-A podcast player that skips swearing before you hear it. Everything runs on your device —
-there is no server, and no audio, transcript or listening history ever leaves the phone.
+A podcast player that skips swearing before you hear it. Filtering runs on your device —
+there is no FilterPod server, and audio and transcripts never leave the phone. Android
+can keep an encrypted, compact backup of your library, settings and listening progress
+in your Google account when system backup is enabled.
 
 The name is the whole idea: coarse goes in, the filter does its work, and what pours out
 is clean. "Coarse" is also what you call a grind that has not been through a filter yet,
@@ -139,9 +141,9 @@ You can add your own words to cut, or exempt words from the built-in list, in Se
 
 ## Privacy
 
-There is nothing to disclose, which is itself the disclosure: no server, no account, no
-analytics, and transcription happens on-device. [PRIVACY.md](PRIVACY.md) says so at the
-length app stores require.
+There is no FilterPod server, account or analytics, and transcription happens on-device.
+Android's optional encrypted backup and the user-controlled JSON export are described in
+[PRIVACY.md](PRIVACY.md) at the length app stores require.
 
 ## Contributing
 

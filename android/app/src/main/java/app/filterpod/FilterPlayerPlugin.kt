@@ -138,6 +138,97 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
         call.resolve()
     }
 
+    /**
+     * Starts the native filter driver for the loaded episode.
+     *
+     * The web layer compiles the wordlist (profile + inflections + user overrides —
+     * single-sourced in TypeScript) and hands the flat result across once, together
+     * with any seed coverage from a stored map or a publisher-transcript shortcut.
+     * From here the session lives entirely in the service's process; the WebView can
+     * die without the pipeline noticing.
+     */
+    @PluginMethod
+    fun startNativeFilter(call: PluginCall) {
+        val running = service()
+        if (running == null) {
+            call.reject("playback service is not running")
+            return
+        }
+        running.listener = this
+        try {
+            val wordlist = call.getObject("wordlist")
+                ?: return call.reject("wordlist is required")
+            val config = LiveFilterEngine.Config(
+                episodeId = call.getString("episodeId")
+                    ?: return call.reject("episodeId is required"),
+                fileKey = call.getString("fileKey") ?: return call.reject("fileKey is required"),
+                streamUrl = call.getString("url"),
+                model = call.getString("model") ?: "base.en",
+                profileId = call.getString("profileId") ?: "standard",
+                padBeforeSec = call.getDouble("padBeforeSec") ?: 0.2,
+                padAfterSec = call.getDouble("padAfterSec") ?: 0.3,
+                mergeGapSec = call.getDouble("mergeGapSec") ?: 0.45,
+                wordlist = WordMatcher.Compiled.fromJson(wordlist),
+                startAtSec = call.getDouble("startAtSec") ?: 0.0,
+                durationSec = call.getDouble("durationSec") ?: 0.0,
+                engineVersion = call.getString("engineVersion") ?: "",
+                wordlistVersion = call.getString("wordlistVersion") ?: "",
+                seedSpans = parseSeedSpans(call.getArray("seedSpans")),
+                seedRanges = parseSeedRanges(call.getArray("seedRanges")),
+                source = call.getString("source") ?: "asr",
+            )
+            running.engine.start(config)
+            call.resolve()
+        } catch (error: Throwable) {
+            call.reject(error.message ?: "could not start filter engine")
+        }
+    }
+
+    @PluginMethod
+    fun stopNativeFilter(call: PluginCall) {
+        service()?.engine?.stop()
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun retargetNativeFilter(call: PluginCall) {
+        val positionSec = call.getDouble("positionSec") ?: 0.0
+        service()?.engine?.retarget(positionSec)
+        call.resolve()
+    }
+
+    private fun parseSeedSpans(array: com.getcapacitor.JSArray?): List<EngineSpan> {
+        if (array == null) return emptyList()
+        val spans = ArrayList<EngineSpan>(array.length())
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+            val terms = ArrayList<String>()
+            item.optJSONArray("terms")?.let { t ->
+                for (j in 0 until t.length()) terms.add(t.optString(j))
+            }
+            spans.add(
+                EngineSpan(
+                    startSec = item.optDouble("startSec", 0.0),
+                    endSec = item.optDouble("endSec", 0.0),
+                    severity = item.optString("severity", "moderate"),
+                    category = item.optString("category", "profanity"),
+                    terms = terms,
+                ),
+            )
+        }
+        return spans
+    }
+
+    private fun parseSeedRanges(array: com.getcapacitor.JSArray?): List<Range> {
+        if (array == null) return emptyList()
+        val ranges = ArrayList<Range>(array.length())
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+            ranges.add(Range(item.optDouble("startSec", 0.0), item.optDouble("endSec", 0.0)))
+        }
+        return ranges
+    }
+
     /** Holds/releases the catch-up wakelock; see PlaybackService.setCatchupHold. */
     @PluginMethod
     fun setCatchupHold(call: PluginCall) {
@@ -178,15 +269,20 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
                 if (snap == null) {
                     call.resolve(lastJournaled())
                 } else {
-                    call.resolve(
-                        JSObject()
-                            .put("running", true)
-                            .put("episodeId", snap.episodeId)
-                            .put("state", snap.state)
-                            .put("positionSec", snap.positionMs / 1000.0)
-                            .put("durationSec", snap.durationMs / 1000.0)
-                            .put("skippedSec", snap.skippedMs / 1000.0),
-                    )
+                    val result = JSObject()
+                        .put("running", true)
+                        .put("episodeId", snap.episodeId)
+                        .put("state", snap.state)
+                        .put("positionSec", snap.positionMs / 1000.0)
+                        .put("durationSec", snap.durationMs / 1000.0)
+                        .put("skippedSec", snap.skippedMs / 1000.0)
+                    // A live engine session rides along, so a fresh page reattaches to
+                    // the pipeline's real state instead of a stale database mirror.
+                    running.engine.snapshot()?.let { session ->
+                        result.put("filtering", true)
+                        result.put("filterSession", snapshotToJson(session))
+                    }
+                    call.resolve(result)
                 }
             }
             return
@@ -241,6 +337,49 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
     }
 
     // --- events back to the web layer ---------------------------------------
+
+    private fun snapshotToJson(session: LiveFilterEngine.Snapshot): JSObject {
+        val spans = com.getcapacitor.JSArray()
+        for (span in session.spans) {
+            spans.put(
+                JSObject()
+                    .put("startSec", span.startSec)
+                    .put("endSec", span.endSec)
+                    .put("severity", span.severity)
+                    .put("category", span.category)
+                    .put("terms", com.getcapacitor.JSArray(span.terms)),
+            )
+        }
+        val ranges = com.getcapacitor.JSArray()
+        for (range in session.ranges) {
+            ranges.put(JSObject().put("startSec", range.startSec).put("endSec", range.endSec))
+        }
+        val persistable = com.getcapacitor.JSArray()
+        for (range in session.persistableRanges) {
+            persistable.put(JSObject().put("startSec", range.startSec).put("endSec", range.endSec))
+        }
+        return JSObject()
+            .put("episodeId", session.episodeId)
+            .put("profileId", session.profileId)
+            .put("spans", spans)
+            .put("analyzedRanges", ranges)
+            .put("persistableRanges", persistable)
+            .put("durationSec", session.durationSec)
+            .put("source", session.source)
+            .put("reachedEnd", session.reachedEnd)
+    }
+
+    override fun onFilterUpdate(session: LiveFilterEngine.Snapshot) {
+        notifyListeners("filterUpdate", snapshotToJson(session))
+    }
+
+    override fun onFilterModelProgress(fraction: Double) {
+        notifyListeners("filterModelProgress", JSObject().put("fraction", fraction))
+    }
+
+    override fun onFilterError(message: String) {
+        notifyListeners("filterError", JSObject().put("message", message))
+    }
 
     override fun onSkip(span: FilterSpan) {
         val payload = JSObject().put(

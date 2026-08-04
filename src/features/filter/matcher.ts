@@ -111,6 +111,32 @@ export function compileWordlist(
 }
 
 /**
+ * The compiled wordlist, serialized for the native engine.
+ *
+ * Compilation stays single-sourced here — profile filtering, inflection expansion,
+ * user overrides — and the Kotlin matcher receives only this flat result at session
+ * start. NEVER_FLAG rides along because the collapse-repeats fallback consults it at
+ * match time. The Kotlin parser (WordMatcher.Compiled.fromJson) and the parity
+ * fixtures both depend on this exact shape.
+ */
+export function serializeCompiledWordlist(compiled: CompiledWordlist): {
+  exact: Array<{ normalized: string; term: string; severity: Severity; category: Category }>
+  phrases: Array<{ words: string[]; term: string; severity: Severity; category: Category }>
+  allowed: string[]
+  neverFlag: string[]
+} {
+  return {
+    exact: [...compiled.exact.entries()].map(([normalized, entry]) => ({
+      normalized,
+      ...entry,
+    })),
+    phrases: compiled.phrases.map((phrase) => ({ words: phrase.words, ...phrase.entry })),
+    allowed: [...compiled.allowed],
+    neverFlag: [...NEVER_FLAG],
+  }
+}
+
+/**
  * There is deliberately no fuzzy/edit-distance tier.
  *
  * An earlier version had one, tightly guarded: candidate at least 5 characters, not on

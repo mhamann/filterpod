@@ -20,12 +20,12 @@ import {
 } from '@/data/repo'
 import { enqueueDownload, fileKeyFor } from '@/features/downloads/downloadManager'
 import {
-  maybeResume,
-  retargetLiveFilter,
-  startLiveFilter,
-  stopLiveFilter,
-  updateDurationSec,
-} from '@/features/filter/liveFilter'
+  reportDuration,
+  reportPosition,
+  retargetFilter,
+  startFilter,
+  stopFilter,
+} from '@/features/filter/filterDriver'
 import { cancelActivePrefilter } from '@/features/filter/prefilter'
 
 /**
@@ -204,12 +204,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         Math.abs(status.durationSec - (episode.durationSec ?? 0)) > 2
       ) {
         measuredDurationSaved.add(episodeId)
-        updateDurationSec(status.durationSec)
+        reportDuration(status.durationSec)
         void recordMeasuredDuration(episodeId, status.durationSec)
       }
 
       // Keep the analysis frontier ahead of where we are.
-      maybeResume(status.positionSec)
+      reportPosition(status.positionSec)
 
       // The native guard can win the pause race; adopt its hold as our catch-up so
       // the wakelocks and the runway-gated auto-resume engage. Without this the pause
@@ -416,7 +416,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     // Analyze a lead-in, then start; the rest is filtered while the audio plays.
     try {
-      const { spans, ranges } = await startLiveFilter({
+      const { spans, ranges } = await startFilter({
         episode,
         fileKey: fileKeyFor(episodeId),
         profile,
@@ -477,7 +477,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         // live playhead. Playback keeps running while the lead-in re-analyzes — the
         // frontier guards hold it back if it gets ahead of coverage.
         try {
-          const { spans, ranges } = await startLiveFilter({
+          const { spans, ranges } = await startFilter({
             episode,
             fileKey: fileKeyFor(episode.id),
             profile,
@@ -532,7 +532,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     // startLiveFilter tears them down itself (the profile-mismatch discard) and begins
     // analyzing under the new rules from wherever the playhead is now.
     try {
-      const { spans, ranges } = await startLiveFilter({
+      const { spans, ranges } = await startFilter({
         episode,
         fileKey: fileKeyFor(episode.id),
         profile,
@@ -608,15 +608,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     // Refuse to start into unanalyzed audio; the pipeline is already working on it.
     if (analyzedRanges.length > 0 && !isAnalyzed(analyzedRanges, positionSec)) {
       set({ catchingUp: true })
-      maybeResume(positionSec)
+      reportPosition(positionSec)
       return
     }
-    set({ catchingUp: false })
     await getPlatform().player.play()
+    // Keep the catch-up wakelocks and foreground standing until native playback has
+    // actually accepted the resume. Clearing first leaves a screen-off race in which
+    // Android can suspend the pipeline between the two bridge calls.
+    set({ catchingUp: false })
   },
 
   async pause() {
     if (!get().loaded) return
+    // A human pause cancels any analysis-driven auto-resume.
+    set({ catchingUp: false })
     await getPlatform().player.pause()
     const { episode, positionSec, durationSec } = get()
     if (episode) {
@@ -651,7 +656,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     // A seek can land anywhere, including audio that was never analyzed. Point the
     // pipeline at the new spot so it starts filling in from there rather than
     // continuing to work ahead of where the user used to be.
-    retargetLiveFilter(target)
+    retargetFilter(target)
 
     const { analyzedRanges } = get()
     if (analyzedRanges.length > 0 && !isAnalyzed(analyzedRanges, target)) {
@@ -689,7 +694,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
   /** Tears down playback and stops filtering, so nothing keeps working in the background. */
   async close() {
-    stopLiveFilter()
+    stopFilter()
     unsubscribeStatus?.()
     unsubscribeSkip?.()
     unsubscribeStatus = null
