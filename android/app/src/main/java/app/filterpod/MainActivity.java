@@ -19,7 +19,35 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         keepRendererAliveInBackground();
+        surviveRendererDeath();
         requestNotificationPermission();
+    }
+
+    /**
+     * Rebuilds the UI instead of dying when the WebView's renderer process is killed.
+     *
+     * Android's default for an unhandled renderer death is to kill the whole app — and
+     * the playback service shares this process, so audio mid-episode dies with a UI
+     * whose only crime was being reclaimed under memory pressure. With the filter
+     * engine living in the service, the renderer is disposable: swallow its death,
+     * recreate the activity (which builds a fresh WebView), and reconnect() re-adopts
+     * the running playback and filter session as if nothing happened.
+     */
+    private void surviveRendererDeath() {
+        android.webkit.WebView webView = getBridge().getWebView();
+        webView.setWebViewClient(new com.getcapacitor.BridgeWebViewClient(getBridge()) {
+            @Override
+            public boolean onRenderProcessGone(
+                    android.webkit.WebView view,
+                    android.webkit.RenderProcessGoneDetail detail) {
+                Log.w("FilterPod", "WebView renderer gone (crash="
+                        + (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+                                && detail.didCrash())
+                        + "); recreating the activity, playback continues");
+                runOnUiThread(MainActivity.this::recreate);
+                return true;
+            }
+        });
     }
 
     /**

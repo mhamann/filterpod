@@ -3,6 +3,7 @@ package app.filterpod
 import android.content.Context
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -234,11 +235,28 @@ object TranscriptionCore {
         }
     }
 
+    /**
+     * Frees the whisper context — from the transcription lane, never directly.
+     *
+     * Freeing is queued behind whatever window is in flight, because whisper has no
+     * internal locking: freeing the context under a running transcription is a straight
+     * use-after-free. This was found the hard way — an activity recreate (renderer
+     * death) destroyed the Transcriber plugin, its onDestroy freed the context while
+     * the service's filter engine was mid-chunk on another thread, and the whole
+     * process died of SIGSEGV, audio included.
+     *
+     * Callers also should not free a context the engine still needs (the reload costs
+     * seconds); see TranscriberPlugin.handleOnDestroy for that guard. This method only
+     * guarantees the free itself cannot race a transcription.
+     */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     fun release() {
-        if (contextPtr != 0L) {
-            WhisperNative.freeContext(contextPtr)
-            contextPtr = 0
-            loadedModel = null
+        kotlinx.coroutines.GlobalScope.launch(dispatcher) {
+            if (contextPtr != 0L) {
+                WhisperNative.freeContext(contextPtr)
+                contextPtr = 0
+                loadedModel = null
+            }
         }
     }
 }
