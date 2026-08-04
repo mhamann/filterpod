@@ -90,7 +90,16 @@ class FilterPlayerPlugin : Plugin(), PlaybackService.PlaybackListener {
             // Park it: the service applies this in onCreate. Waiting here instead would
             // block the bridge thread on an asynchronous service start.
             PlaybackService.pendingLoad = request
-            context.startService(Intent(context, PlaybackService::class.java))
+            try {
+                context.startService(Intent(context, PlaybackService::class.java))
+            } catch (error: IllegalStateException) {
+                // The OS refuses service starts from an app it considers backgrounded —
+                // including "top but the screen just locked". Reject rather than crash;
+                // the web layer surfaces the error and the next foreground press works.
+                PlaybackService.pendingLoad = null
+                call.reject(error.message ?: "cannot start playback from the background")
+                return
+            }
         }
         call.resolve()
     }

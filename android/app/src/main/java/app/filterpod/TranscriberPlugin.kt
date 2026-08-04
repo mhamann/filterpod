@@ -152,7 +152,13 @@ class TranscriberPlugin : Plugin() {
 
     override fun handleOnDestroy() {
         scope.cancel()
-        TranscriptionCore.release()
+        // The whisper context is shared with the service's filter engine, which
+        // outlives this activity by design — an activity recreate (renderer death,
+        // config change) must not pull the model out from under a session that is
+        // mid-episode. Only free it when nothing else can be using it.
+        if (PlaybackService.instance?.engine?.isActive() != true) {
+            TranscriptionCore.release()
+        }
         super.handleOnDestroy()
     }
 }
