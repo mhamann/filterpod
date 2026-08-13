@@ -42,6 +42,11 @@ class PlaybackController(
     private val repo: Repo,
     /** Publisher-transcript shortcut; returns null when no usable transcript exists. */
     private val transcriptSeeder: TranscriptSeeder = TranscriptSeeder { _, _, _, _ -> null },
+    /**
+     * Fired when a live session is about to start. The prefilter hooks this to yield
+     * the transcriber immediately instead of making the lead-in queue behind it.
+     */
+    private val onLiveSessionStarting: () -> Unit = {},
 ) {
     fun interface TranscriptSeeder {
         suspend fun seed(
@@ -293,6 +298,10 @@ class PlaybackController(
             preparing = true,
             loaded = false,
         )
+
+        // The playhead's pipeline owns the transcriber; a background prefilter build
+        // in flight yields now rather than making the lead-in queue behind it.
+        onLiveSessionStarting()
 
         // The player is loaded before analysis begins: loading starts the service,
         // buffers audio while the lead-in transcribes, and gives the engine a home.

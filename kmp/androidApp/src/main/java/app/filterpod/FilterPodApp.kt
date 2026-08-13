@@ -24,6 +24,10 @@ class FilterPodApp : Application() {
         private set
     lateinit var controller: PlaybackController
         private set
+    lateinit var downloader: Downloader
+        private set
+    lateinit var prefilter: Prefilter
+        private set
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -33,7 +37,12 @@ class FilterPodApp : Application() {
 
         repo = Repo(createDatabase(DriverFactory(this)), Dispatchers.IO)
         http = AndroidHttp()
-        controller = PlaybackController(this, repo, TranscriptSeeding(http))
+        prefilter = Prefilter(this, repo)
+        controller = PlaybackController(
+            this, repo, TranscriptSeeding(http),
+            onLiveSessionStarting = { prefilter.cancelActive() },
+        )
+        downloader = Downloader(this, repo, onDownloaded = { prefilter.prefilterEpisode(it) })
 
         appScope.launch {
             repo.initialize()
@@ -55,6 +64,10 @@ class FilterPodApp : Application() {
             }
 
             controller.start()
+
+            // Downloaded episodes without a current map get their filtering built
+            // ahead of time — this is what makes "downloaded" mean "ready".
+            prefilter.prefilterDownloadedBacklog()
         }
     }
 
