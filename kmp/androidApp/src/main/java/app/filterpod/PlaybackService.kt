@@ -327,7 +327,15 @@ class PlaybackService : MediaSessionService() {
 
         // Service creation is asynchronous, so commands issued between
         // startForegroundService() and onCreate() have nowhere to land. Rather than
-        // block the caller or drop them, they are parked and applied here.
+        // block the caller or drop them, they are parked and applied here. The
+        // listener is parked the same way: without this, a controller that started
+        // the service attached its listener to null, nothing re-attached when the
+        // service came up, and no status ever flowed — a frozen seek bar and a play
+        // button that never changed state.
+        pendingListener?.let { parked ->
+            pendingListener = null
+            listener = parked
+        }
         pendingLoad?.let { request ->
             pendingLoad = null
             load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs, request.episodeId)
@@ -918,6 +926,10 @@ class PlaybackService : MediaSessionService() {
 
         @Volatile
         var pendingPlay: Boolean = false
+
+        /** Listener parked by a controller that starts the service; applied in onCreate. */
+        @Volatile
+        var pendingListener: PlaybackListener? = null
 
         /*
          * Increments to build the session with, for when they are set before the service

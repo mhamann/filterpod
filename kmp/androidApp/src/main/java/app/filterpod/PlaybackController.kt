@@ -334,6 +334,7 @@ class PlaybackController(
             running.listener = listener
             running.load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs, request.episodeId)
         } else {
+            PlaybackService.pendingListener = listener
             PlaybackService.pendingLoad = request
             context.startForegroundService(Intent(context, PlaybackService::class.java))
         }
@@ -487,7 +488,9 @@ class PlaybackController(
             openAsync(s.episode.id, autoPlay = true)
             return
         }
-        service()?.play()
+        // Still starting from a load issued moments ago; play once it is up.
+        val running = service()
+        if (running == null) PlaybackService.pendingPlay = true else running.play()
         _state.value = _state.value.copy(catchingUp = false)
     }
 

@@ -10,9 +10,13 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
+    <!-- Cleartext stays enabled: plenty of long-running feeds still serve artwork and
+         enclosures over plain http (the BBC's image CDN among them), and a podcast
+         player that renders those shows artless is broken in a way users notice. -->
     <application
         android:name=".FilterPodApp"
         android:label="FilterPod"
+        android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.FilterPod"

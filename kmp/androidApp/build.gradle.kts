@@ -27,7 +27,13 @@ android {
         }
         externalNativeBuild {
             cmake {
-                arguments += listOf("-DGGML_NATIVE=OFF", "-DANDROID_ARM_NEON=ON")
+                // Always optimize the native build, even in a debug APK. Gradle
+                // otherwise passes CMAKE_BUILD_TYPE=Debug, compiling ggml's inner
+                // loops at -O0 — measured on this device at ~0.27x realtime against
+                // ~10x optimized, which starves the frontier and holds playback.
+                // The Kotlin side stays debuggable; only the math is optimized.
+                arguments += listOf("-DCMAKE_BUILD_TYPE=Release")
+                cppFlags += "-O3"
             }
         }
     }
