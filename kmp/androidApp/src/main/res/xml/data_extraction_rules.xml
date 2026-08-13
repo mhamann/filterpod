@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ cloud backup and device transfer.
+
+  The JSON is the only irreplaceable payload. Audio, model weights, artwork and filter
+  maps are intentionally absent: including them would exceed Auto Backup's quota and
+  prevent the small library snapshot from being backed up at all.
+-->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="file" path="filterpod/backup/library.json" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="filterpod/backup/library.json" />
+    </device-transfer>
+</data-extraction-rules>

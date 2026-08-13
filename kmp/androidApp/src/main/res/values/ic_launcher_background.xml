@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Behind the adaptive foreground. Matches panel-950, the app's own background,
+         so the launcher icon and the app it opens are recognisably the same thing. -->
+    <color name="ic_launcher_background">#0d0908</color>
+</resources>

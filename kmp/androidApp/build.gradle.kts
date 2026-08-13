@@ -1,0 +1,86 @@
+plugins {
+    id("com.android.application")
+    kotlin("android")
+    id("org.jetbrains.kotlin.plugin.compose")
+    kotlin("plugin.serialization")
+}
+
+android {
+    namespace = "app.filterpod"
+    compileSdk = 36
+
+    defaultConfig {
+        // The cutover id. Debug builds carry ".next" so a dev install can never
+        // replace the Capacitor app the user relies on daily; the data-preserving
+        // upgrade happens only when a suffix-free debug build is installed
+        // deliberately, after the exported state is confirmed current.
+        applicationId = "app.filterpod"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0.0-kmp"
+
+        ndk {
+            // arm64 only, matching the Capacitor app: building whisper.cpp four
+            // times over is not worth the wait.
+            abiFilters += "arm64-v8a"
+        }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DGGML_NATIVE=OFF", "-DANDROID_ARM_NEON=ON")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix = ".next"
+        }
+        release {
+            isMinifyEnabled = false
+        }
+    }
+
+    // whisper.cpp stays vendored once, in the Capacitor project's tree, until that
+    // project is deleted — then the cpp/ directory moves here wholesale.
+    externalNativeBuild {
+        cmake {
+            path = file("../../android/app/src/main/cpp/CMakeLists.txt")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+    }
+}
+
+dependencies {
+    implementation(project(":shared"))
+
+    val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
+    implementation(composeBom)
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
+
+    implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.2.0")
+
+    // The playback/filter core, moved from the Capacitor app.
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-session:1.8.0")
+    implementation("androidx.media3:media3-datasource:1.8.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+}

@@ -1,0 +1,229 @@
+-- The relational port of the Dexie schema (src/data/db.ts).
+-- Nested structures (spans, ranges, transcripts, profile lists) are JSON text
+-- columns: they are only ever read and written whole, exactly as Dexie stored them,
+-- and it keeps the cutover importer a straight copy.
+
+CREATE TABLE podcast (
+  id TEXT PRIMARY KEY NOT NULL,
+  feedUrl TEXT NOT NULL,
+  json TEXT NOT NULL
+);
+CREATE INDEX podcast_feedUrl ON podcast(feedUrl);
+
+CREATE TABLE episode (
+  id TEXT PRIMARY KEY NOT NULL,
+  podcastId TEXT NOT NULL,
+  publishedAt INTEGER NOT NULL,
+  json TEXT NOT NULL
+);
+CREATE INDEX episode_podcast_published ON episode(podcastId, publishedAt);
+
+CREATE TABLE subscription (
+  podcastId TEXT PRIMARY KEY NOT NULL,
+  subscribedAt INTEGER NOT NULL,
+  json TEXT NOT NULL
+);
+
+CREATE TABLE progress (
+  episodeId TEXT PRIMARY KEY NOT NULL,
+  lastPlayedAt INTEGER NOT NULL,
+  played INTEGER NOT NULL,
+  json TEXT NOT NULL
+);
+CREATE INDEX progress_lastPlayed ON progress(lastPlayedAt);
+
+CREATE TABLE download (
+  episodeId TEXT PRIMARY KEY NOT NULL,
+  state TEXT NOT NULL,
+  startedAt INTEGER NOT NULL,
+  json TEXT NOT NULL
+);
+CREATE INDEX download_state ON download(state);
+
+CREATE TABLE filterMap (
+  episodeId TEXT PRIMARY KEY NOT NULL,
+  status TEXT NOT NULL,
+  json TEXT NOT NULL
+);
+
+CREATE TABLE filterProfile (
+  id TEXT PRIMARY KEY NOT NULL,
+  json TEXT NOT NULL
+);
+
+CREATE TABLE wordOverride (
+  term TEXT PRIMARY KEY NOT NULL,
+  json TEXT NOT NULL
+);
+
+CREATE TABLE queueItem (
+  episodeId TEXT PRIMARY KEY NOT NULL,
+  position INTEGER NOT NULL,
+  addedAt INTEGER NOT NULL
+);
+
+CREATE TABLE chapterCache (
+  episodeId TEXT PRIMARY KEY NOT NULL,
+  fetchedAt INTEGER NOT NULL,
+  json TEXT NOT NULL
+);
+
+-- Single-row documents: settings, importer stamps, anything singleton.
+CREATE TABLE kv (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL
+);
+
+-- podcasts --------------------------------------------------------------------
+
+upsertPodcast:
+INSERT OR REPLACE INTO podcast(id, feedUrl, json) VALUES (?, ?, ?);
+
+getPodcast:
+SELECT json FROM podcast WHERE id = ?;
+
+listPodcasts:
+SELECT json FROM podcast;
+
+deletePodcast:
+DELETE FROM podcast WHERE id = ?;
+
+-- episodes --------------------------------------------------------------------
+
+upsertEpisode:
+INSERT OR REPLACE INTO episode(id, podcastId, publishedAt, json) VALUES (?, ?, ?, ?);
+
+getEpisode:
+SELECT json FROM episode WHERE id = ?;
+
+episodeExists:
+SELECT COUNT(*) FROM episode WHERE id = ?;
+
+listEpisodesForPodcast:
+SELECT json FROM episode WHERE podcastId = ? ORDER BY publishedAt DESC LIMIT ?;
+
+listEpisodeIdsForPodcast:
+SELECT id FROM episode WHERE podcastId = ?;
+
+deleteEpisodesForPodcast:
+DELETE FROM episode WHERE podcastId = ?;
+
+-- subscriptions ---------------------------------------------------------------
+
+upsertSubscription:
+INSERT OR REPLACE INTO subscription(podcastId, subscribedAt, json) VALUES (?, ?, ?);
+
+getSubscription:
+SELECT json FROM subscription WHERE podcastId = ?;
+
+listSubscriptions:
+SELECT json FROM subscription ORDER BY subscribedAt DESC;
+
+countSubscriptions:
+SELECT COUNT(*) FROM subscription;
+
+deleteSubscription:
+DELETE FROM subscription WHERE podcastId = ?;
+
+-- progress --------------------------------------------------------------------
+
+upsertProgress:
+INSERT OR REPLACE INTO progress(episodeId, lastPlayedAt, played, json) VALUES (?, ?, ?, ?);
+
+getProgress:
+SELECT json FROM progress WHERE episodeId = ?;
+
+listProgressRecent:
+SELECT json FROM progress ORDER BY lastPlayedAt DESC LIMIT ?;
+
+listAllProgress:
+SELECT json FROM progress;
+
+-- downloads -------------------------------------------------------------------
+
+upsertDownload:
+INSERT OR REPLACE INTO download(episodeId, state, startedAt, json) VALUES (?, ?, ?, ?);
+
+getDownload:
+SELECT json FROM download WHERE episodeId = ?;
+
+listDownloads:
+SELECT json FROM download ORDER BY startedAt DESC;
+
+listDownloadsByState:
+SELECT json FROM download WHERE state = ? ORDER BY startedAt DESC;
+
+deleteDownload:
+DELETE FROM download WHERE episodeId = ?;
+
+-- filter maps -----------------------------------------------------------------
+
+upsertFilterMap:
+INSERT OR REPLACE INTO filterMap(episodeId, status, json) VALUES (?, ?, ?);
+
+getFilterMap:
+SELECT json FROM filterMap WHERE episodeId = ?;
+
+deleteFilterMap:
+DELETE FROM filterMap WHERE episodeId = ?;
+
+-- filter profiles ---------------------------------------------------------------
+
+upsertFilterProfile:
+INSERT OR REPLACE INTO filterProfile(id, json) VALUES (?, ?);
+
+getFilterProfile:
+SELECT json FROM filterProfile WHERE id = ?;
+
+listFilterProfiles:
+SELECT json FROM filterProfile;
+
+deleteFilterProfile:
+DELETE FROM filterProfile WHERE id = ?;
+
+-- word overrides -----------------------------------------------------------------
+
+upsertWordOverride:
+INSERT OR REPLACE INTO wordOverride(term, json) VALUES (?, ?);
+
+listWordOverrides:
+SELECT json FROM wordOverride;
+
+deleteWordOverride:
+DELETE FROM wordOverride WHERE term = ?;
+
+-- queue ---------------------------------------------------------------------------
+
+listQueue:
+SELECT episodeId, position, addedAt FROM queueItem ORDER BY position ASC;
+
+countQueue:
+SELECT COUNT(*) FROM queueItem;
+
+upsertQueueItem:
+INSERT OR REPLACE INTO queueItem(episodeId, position, addedAt) VALUES (?, ?, ?);
+
+deleteQueueItem:
+DELETE FROM queueItem WHERE episodeId = ?;
+
+clearQueue:
+DELETE FROM queueItem;
+
+-- chapters ------------------------------------------------------------------------
+
+upsertChapterCache:
+INSERT OR REPLACE INTO chapterCache(episodeId, fetchedAt, json) VALUES (?, ?, ?);
+
+getChapterCache:
+SELECT json FROM chapterCache WHERE episodeId = ?;
+
+deleteChapterCache:
+DELETE FROM chapterCache WHERE episodeId = ?;
+
+-- kv ------------------------------------------------------------------------------
+
+putKv:
+INSERT OR REPLACE INTO kv(key, value) VALUES (?, ?);
+
+getKv:
+SELECT value FROM kv WHERE key = ?;
