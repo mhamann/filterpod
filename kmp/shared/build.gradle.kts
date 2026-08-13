@@ -27,6 +27,8 @@ kotlin {
         val androidUnitTest by getting {
             dependencies {
                 implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
+                // XmlPullParser for host-side feed-parser tests; Android ships its own.
+                implementation("net.sf.kxml:kxml2:2.3.0")
             }
         }
     }

@@ -407,6 +407,11 @@ class Repo(
         q.listQueue().executeAsList().firstOrNull()?.episodeId
     }
 
+    /** Direct row write, for the importer: positions arrive already dense. */
+    suspend fun putQueueItemRaw(item: QueueItem) = withContext(io) {
+        q.upsertQueueItem(item.episodeId, item.position.toLong(), item.addedAt)
+    }
+
     private fun renumber(items: List<QueueItem>) {
         items.forEachIndexed { index, item ->
             q.upsertQueueItem(item.episodeId, index.toLong(), item.addedAt)

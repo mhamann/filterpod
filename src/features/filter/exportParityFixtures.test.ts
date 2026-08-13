@@ -28,6 +28,11 @@ import { sortAndDedupe, spansFromMatches } from './buildFilterMap'
  */
 
 const OUT = resolve(__dirname, '../../../android/app/src/test/resources/filter-fixtures.json')
+/** The KMP shared module runs its own parity suite against the same vectors. */
+const OUT_KMP = resolve(
+  __dirname,
+  '../../../kmp/shared/src/androidUnitTest/resources/filter-fixtures.json',
+)
 
 const words = (...tokens: Array<[string, number, number]>): TimedWord[] =>
   tokens.map(([word, startSec, endSec]) => ({ word, startSec, endSec }))
@@ -226,8 +231,10 @@ describe('parity fixture export', () => {
       rangeCases,
     }
 
-    mkdirSync(resolve(OUT, '..'), { recursive: true })
-    writeFileSync(OUT, JSON.stringify(fixtures, null, 2))
+    for (const out of [OUT, OUT_KMP]) {
+      mkdirSync(resolve(out, '..'), { recursive: true })
+      writeFileSync(out, JSON.stringify(fixtures, null, 2))
+    }
     expect(matchCases.some((c) => c.matches.length > 0)).toBe(true)
   })
 })
