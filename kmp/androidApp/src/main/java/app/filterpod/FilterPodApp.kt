@@ -28,6 +28,10 @@ class FilterPodApp : Application() {
         private set
     lateinit var prefilter: Prefilter
         private set
+    lateinit var refresher: app.filterpod.shared.feeds.FeedRefresher
+        private set
+    lateinit var subscriptions: app.filterpod.shared.feeds.SubscriptionService
+        private set
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -43,6 +47,18 @@ class FilterPodApp : Application() {
             onLiveSessionStarting = { prefilter.cancelActive() },
         )
         downloader = Downloader(this, repo, onDownloaded = { prefilter.prefilterEpisode(it) })
+        refresher = app.filterpod.shared.feeds.FeedRefresher(
+            http, repo, app.filterpod.shared.feeds.XmlFeedReader(),
+        ) { System.currentTimeMillis() }
+        subscriptions = app.filterpod.shared.feeds.SubscriptionService(
+            repo = repo,
+            refresher = refresher,
+            downloads = { episodeId, auto ->
+                repo.getEpisode(episodeId)?.let { downloader.start(episodeId, it.audioUrl, auto) }
+            },
+            downloadDeleter = { episodeId -> downloader.delete(episodeId) },
+            now = { System.currentTimeMillis() },
+        )
 
         appScope.launch {
             repo.initialize()
@@ -65,8 +81,10 @@ class FilterPodApp : Application() {
 
             controller.start()
 
-            // Downloaded episodes without a current map get their filtering built
-            // ahead of time — this is what makes "downloaded" mean "ready".
+            // Background startup work, ordered cheapest-first: refresh feeds (new
+            // episodes apply auto-queue/auto-download rules), then sweep the
+            // downloaded backlog for missing filter maps.
+            runCatching { subscriptions.refreshAndAutoDownload() }
             prefilter.prefilterDownloadedBacklog()
         }
     }

@@ -125,6 +125,11 @@ class Repo(
         fresh
     }
 
+    /** Every episode id for a podcast — download cleanup and the subscribe-time count. */
+    suspend fun listEpisodeIds(podcastId: String): List<String> = withContext(io) {
+        q.listEpisodeIdsForPodcast(podcastId).executeAsList()
+    }
+
     suspend fun getEpisode(id: String): Episode? = withContext(io) {
         q.getEpisode(id).executeAsOneOrNull()?.let { json.decodeFromString(Episode.serializer(), it) }
     }
