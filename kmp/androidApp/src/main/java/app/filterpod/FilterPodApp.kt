@@ -60,6 +60,12 @@ class FilterPodApp : Application() {
             now = { System.currentTimeMillis() },
         )
 
+        // The UI's refresh seam, pointed at the real feed layer (the UI was built
+        // against a stub while the feeds port was still in flight).
+        app.filterpod.ui.FeedRefresh.delegate = { _, _, podcast ->
+            refresher.fetchFeed(podcast.feedUrl)
+        }
+
         appScope.launch {
             repo.initialize()
 
