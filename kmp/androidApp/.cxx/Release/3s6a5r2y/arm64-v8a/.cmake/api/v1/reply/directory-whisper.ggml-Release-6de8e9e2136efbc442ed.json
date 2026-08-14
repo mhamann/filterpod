@@ -1,0 +1,85 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"whisper.cpp/ggml/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 252,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 253,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"whisper/ggml/src/libggml.a"
+			],
+			"targetId" : "ggml::@1d562b45171badc9bf5f",
+			"targetIndex" : 1,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "include",
+			"paths" : 
+			[
+				"whisper.cpp/ggml/include/ggml.h",
+				"whisper.cpp/ggml/include/ggml-cpu.h",
+				"whisper.cpp/ggml/include/ggml-alloc.h",
+				"whisper.cpp/ggml/include/ggml-backend.h",
+				"whisper.cpp/ggml/include/ggml-blas.h",
+				"whisper.cpp/ggml/include/ggml-cann.h",
+				"whisper.cpp/ggml/include/ggml-cuda.h",
+				"whisper.cpp/ggml/include/ggml-kompute.h",
+				"whisper.cpp/ggml/include/ggml-opt.h",
+				"whisper.cpp/ggml/include/ggml-metal.h",
+				"whisper.cpp/ggml/include/ggml-rpc.h",
+				"whisper.cpp/ggml/include/ggml-sycl.h",
+				"whisper.cpp/ggml/include/ggml-vulkan.h"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"whisper/ggml/src/libggml-base.a"
+			],
+			"targetId" : "ggml-base::@1d562b45171badc9bf5f",
+			"targetIndex" : 2,
+			"type" : "target"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "whisper/ggml",
+		"source" : "whisper.cpp/ggml"
+	}
+}

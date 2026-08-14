@@ -56,77 +56,51 @@ the cut lands before the word rather than after it — audio already handed to t
 or sitting in a Bluetooth headset, cannot be recalled. On Android this runs in a Media3
 foreground service, so it keeps working with the screen off.
 
-## Running it
+## Building and running it
 
-```bash
-pnpm install
-```
+FilterPod is a Kotlin Multiplatform project: domain and data live in `kmp/shared`
+(`commonMain`, ready for an iOS target), and the Android app — Compose UI, Media3
+playback service, the live filter engine, the whisper JNI bridge — is `kmp/androidApp`.
 
-```bash
-pnpm dev
-```
-
-The browser build is the development target. It is fully functional — search, subscribe,
-download, transcribe (via WebGPU/WASM Whisper), play — with two caveats: RSS fetching goes
-through a dev-only proxy that never ships, and skipping stops when the tab is backgrounded.
-
-```bash
-pnpm test
-```
-
-There is also an opt-in integration test that runs the real Whisper model over real
-audio and pushes the result through the matcher. It is excluded by default because it
-downloads model weights and takes minutes, but it is the only check that catches
-problems in Whisper's actual output — chunk-seam duplicates, inverted word timings,
-and matcher false positives on real speech. It needs `ffmpeg` on PATH:
-
-```bash
-FILTERPOD_ASR_AUDIO=/path/to/episode.mp3 pnpm test
-```
-
-## Building the Android app
-
-Requires the Android SDK with NDK, and **JDK 21** — Capacitor 8 will not build on 17. If
-you have Android Studio installed, its bundled runtime works:
+Requires the Android SDK with NDK and **JDK 21**. If you have Android Studio installed,
+its bundled runtime works:
 
 ```bash
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ```
 
-Vendor whisper.cpp first:
+Vendor whisper.cpp first if `kmp/androidApp/src/main/cpp/whisper.cpp` is absent:
 
 ```bash
 ./scripts/vendor-whisper.sh
 ```
 
-Then build the web assets and sync them into the native project:
+Then build, from `kmp/`:
 
 ```bash
-pnpm android:sync
+cd kmp && ./gradlew :androidApp:assembleDebug
 ```
 
-Then open `android/` in Android Studio, or build from the command line:
+The data layer, feed parser, wordlist compiler, transcript parser and importer all run
+on the host JVM:
 
 ```bash
-cd android && ./gradlew assembleDebug
+cd kmp && ./gradlew :shared:testDebugUnitTest
 ```
 
 whisper.cpp is vendored rather than pulled from a package repository — there is no
 maintained Android artifact, and the token-timestamp behaviour the JNI bridge depends on
-moves between releases, so it is pinned to a tag.
+moves between releases, so it is pinned to a tag. The native build is always compiled
+optimized, even for debug APKs: ggml at `-O0` runs slower than playback, which starves
+the analysis frontier and pauses audio.
 
-**16 KB page size.** Android 15+ devices (Pixel 7 Pro included) use 16 KB memory pages,
-and Play requires 16 KB-aligned native libraries for apps targeting Android 15+. Two
-things in [CMakeLists.txt](android/app/src/main/cpp/CMakeLists.txt) handle this and must
+**16 KB page size.** Android 15+ devices use 16 KB memory pages, and Play requires
+16 KB-aligned native libraries for apps targeting Android 15+. Two things in
+[CMakeLists.txt](kmp/androidApp/src/main/cpp/CMakeLists.txt) handle this and must
 stay: the `max-page-size=16384` link options, and `GGML_OPENMP=OFF` — ggml's OpenMP path
 pulls in the NDK's prebuilt `libomp.so`, which is not aligned and cannot be relinked.
-Verify after any NDK or whisper.cpp bump:
-
-```bash
-llvm-readelf -l android/app/build/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib/arm64-v8a/libfilterpod_whisper.so | grep LOAD
-```
-
-Every `LOAD` segment must show alignment `0x4000`.
+Verify after any NDK or whisper.cpp bump that every `LOAD` segment of
+`libfilterpod_whisper.so` shows alignment `0x4000`.
 
 ## Filter profiles
 
@@ -172,18 +146,17 @@ this one away.
 ## Layout
 
 ```
-src/
-  core/          domain types, span math
-  data/          Dexie schema, repositories, defaults
-  platform/      the abstraction seam — web/ and native/ implementations
-  features/      discovery, feeds, subscriptions, player, downloads, filter
-  ui/            components, including the cut timeline
-  app/           shell, screens, bootstrap
-android/
-  app/src/main/java/app/filterpod/   Kotlin plugins + Media3 playback service
-  app/src/main/cpp/                  whisper.cpp JNI bridge
+kmp/
+  shared/       Kotlin Multiplatform: models, SQLDelight data layer, feeds,
+                wordlist compiler, transcripts, chapters, discovery, importer
+  androidApp/   Compose UI, PlaybackController, Media3 playback service,
+                LiveFilterEngine, TranscriptionCore, whisper.cpp JNI bridge
+docs/           store listing and release notes
+assets/         brand artwork sources
 ```
 
-`platform/` is the load-bearing part: every capability that differs between browser and
-device sits behind an interface with two implementations, which is what makes the whole
-app developable in a browser with hot reload.
+The filter's behavioral contract is pinned by golden fixtures
+(`kmp/shared/src/androidUnitTest/resources/filter-fixtures.json`): matcher decisions,
+span math and the compiled wordlist were generated from the original TypeScript
+implementation and the Kotlin port must reproduce them exactly. The fixtures are the
+spec; a change in filtering behavior must change them deliberately.

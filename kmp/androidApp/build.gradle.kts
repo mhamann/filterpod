@@ -10,15 +10,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        // The cutover id. Debug builds carry ".next" so a dev install can never
-        // replace the Capacitor app the user relies on daily; the data-preserving
-        // upgrade happens only when a suffix-free debug build is installed
-        // deliberately, after the exported state is confirmed current.
         applicationId = "app.filterpod"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0-kmp"
+        // Succeeds the Capacitor app's versionCode 3; the cutover is an upgrade.
+        versionCode = 4
+        versionName = "1.0.0"
 
         ndk {
             // arm64 only, matching the Capacitor app: building whisper.cpp four
@@ -39,19 +36,14 @@ android {
     }
 
     buildTypes {
-        debug {
-            applicationIdSuffix = ".next"
-        }
         release {
             isMinifyEnabled = false
         }
     }
 
-    // whisper.cpp stays vendored once, in the Capacitor project's tree, until that
-    // project is deleted — then the cpp/ directory moves here wholesale.
     externalNativeBuild {
         cmake {
-            path = file("../../android/app/src/main/cpp/CMakeLists.txt")
+            path = file("src/main/cpp/CMakeLists.txt")
         }
     }
 

@@ -1,0 +1,71 @@
+{
+  "buildFiles": [
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/CMakeLists.txt",
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/CMakeLists.txt",
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/cmake/build-info.cmake",
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/cmake/whisper-config.cmake.in",
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/ggml/CMakeLists.txt",
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/ggml/src/CMakeLists.txt",
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt",
+    "/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/mhamann/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/mhamann/projects/filterpod/android/app/.cxx/Release/5s2m2t4v/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/mhamann/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/mhamann/projects/filterpod/android/app/.cxx/Release/5s2m2t4v/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "filterpod_whisper::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "filterpod_whisper",
+      "output": "/Users/mhamann/projects/filterpod/android/app/build/intermediates/cxx/Release/5s2m2t4v/obj/arm64-v8a/libfilterpod_whisper.so",
+      "runtimeFiles": []
+    },
+    "ggml::@1d562b45171badc9bf5f": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ggml",
+      "output": "/Users/mhamann/projects/filterpod/android/app/.cxx/Release/5s2m2t4v/arm64-v8a/whisper/ggml/src/libggml.a"
+    },
+    "ggml-base::@1d562b45171badc9bf5f": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ggml-base",
+      "output": "/Users/mhamann/projects/filterpod/android/app/.cxx/Release/5s2m2t4v/arm64-v8a/whisper/ggml/src/libggml-base.a"
+    },
+    "ggml-cpu::@1d562b45171badc9bf5f": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ggml-cpu",
+      "output": "/Users/mhamann/projects/filterpod/android/app/.cxx/Release/5s2m2t4v/arm64-v8a/whisper/ggml/src/libggml-cpu.a"
+    },
+    "whisper::@63d3ec8989aed7458de8": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "whisper",
+      "output": "/Users/mhamann/projects/filterpod/android/app/.cxx/Release/5s2m2t4v/arm64-v8a/whisper/src/libwhisper.a"
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/mhamann/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/mhamann/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

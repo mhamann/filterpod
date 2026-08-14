@@ -1,0 +1,23 @@
+# ninja log v5
+3	24	1785033405174566794	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-hbm.cpp.o	bbfd4a0203f44770
+1	26	1785033405173465883	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-alloc.c.o	e9386d49fe0a8f35
+1	27	1785033405176839950	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml.c.o	fcb87505b2bb9794
+3	29	1785033405177568863	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-quants.c.o	43697d5d8b0780d4
+2	29	1785033405177993903	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-quants.c.o	679c80bf01e06648
+2	30	1785033405179012564	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.c.o	b9f241b622e059c9
+1	42	1785033405193300371	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-threading.cpp.o	7a913941164fd48
+1	45	1785033405193682161	CMakeFiles/filterpod_whisper.dir/whisper_jni.cpp.o	be085c7137a62e3e
+1	46	1785033405194789781	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-backend.cpp.o	3bb71509d7a326bd
+1	47	1785033405195969567	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-opt.cpp.o	9120ef5944e9dc11
+2	48	1785033405196046733	whisper/ggml/src/CMakeFiles/ggml.dir/ggml-backend-reg.cpp.o	d9c3207417d03b80
+2	49	1785033405196023692	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.cpp.o	a8fb62d686f3182
+3	50	1785033405195351070	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-aarch64.cpp.o	b9f27b92ece3266d
+4	50	1785033405195312320	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-traits.cpp.o	4e0e54470e91e623
+25	51	1785033405203625239	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/amx.cpp.o	ab412579b291ca8e
+26	52	1785033405204520859	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/mmq.cpp.o	a50fe21929b778c
+28	61	1785033405211576659	whisper/src/CMakeFiles/whisper.dir/whisper.cpp.o	596fc823c5cd6069
+47	79	1785033405232789000	whisper/ggml/src/libggml-base.a	2d118811304f218f
+79	108	1785033405262131000	whisper/ggml/src/libggml-cpu.a	c7fe9381195092e
+108	137	1785033405291055000	whisper/ggml/src/libggml.a	36e57f54357fdd0
+137	217	1785033405371088000	whisper/src/libwhisper.a	d58e3e51eb645f30
+217	270	1785033405417070012	/Users/mhamann/projects/filterpod/android/app/build/intermediates/cxx/Release/5s2m2t4v/obj/armeabi-v7a/libfilterpod_whisper.so	4070a5d37230ba5f

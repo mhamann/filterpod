@@ -9,7 +9,7 @@ set -euo pipefail
 
 WHISPER_TAG="${WHISPER_TAG:-v1.7.4}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TARGET="$ROOT/android/app/src/main/cpp/whisper.cpp"
+TARGET="$ROOT/kmp/androidApp/src/main/cpp/whisper.cpp"
 
 if [ -d "$TARGET/.git" ]; then
   echo "whisper.cpp already vendored at $TARGET"

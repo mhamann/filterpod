@@ -19,7 +19,8 @@ FilterPod fills that gap.
 
 1. **No server components.** Every network call is a direct fetch of a third-party resource
    (RSS, artwork, audio). All compute — transcription, matching, filtering — runs on device.
-2. **Android first**, via a single web codebase packaged with Capacitor.
+2. **Android first**, in Kotlin Multiplatform: platform-neutral logic in commonMain,
+   so an iOS target is an addition rather than a rewrite.
 3. **Skip** is the filter action: flagged spans are seeked past, not muted or bleeped.
 
 ## Consequences of "no server"
@@ -83,11 +84,10 @@ meaning failure, which matters because the pipeline gives up on a stretch that f
 repeatedly and marks it analyzed. Walling the playhead in behind an untranscribable
 stretch is the worse of the two failures, but it has to be a real one.
 
-**CORS is a real constraint in the browser, not on device.** Podcast CDNs do not send
-`Access-Control-Allow-Origin`. On Android, Capacitor's native HTTP bridge bypasses CORS
-entirely. In browser dev we stand in a Vite dev-only middleware (`/__passthrough` in
-[vite.config.ts](vite.config.ts)); it never ships. The browser PWA build is therefore a
-**development and preview target**, not the shipping product.
+**Feeds are fetched directly.** Every network call is a plain HTTP GET of a
+third-party resource through one injected `Http` interface — no proxy, no CORS layer
+(a constraint the original browser-based incarnation had to work around; native HTTP
+does not).
 
 **Timing precision is bounded by the ASR.** whisper.cpp derives word timestamps by running
 DTW over decoder cross-attention, which carries roughly 100–400ms of error. Skip spans are
@@ -113,8 +113,9 @@ Two changes account for that 4.8×, and neither is the one you would reach for f
 
 A third is a build setting rather than a tuning knob: Gradle passes
 `CMAKE_BUILD_TYPE=Debug` for `assembleDebug`, which compiles ggml's inner loops at `-O0`.
-`android/app/build.gradle` forces Release for the native build regardless of the Android
-build type. Kotlin stays debuggable; only the math is optimized.
+`kmp/androidApp/build.gradle.kts` forces Release for the native build regardless of the
+Android build type. Kotlin stays debuggable; only the math is optimized. (This one was
+re-learned during the Kotlin rewrite — the unoptimized build measured 0.27× realtime.)
 
 The model choice was *not* the lever — `base.en` is fast enough once the above are right,
 so the accuracy is free. `tiny.en` remains selectable for slower hardware.
@@ -123,30 +124,29 @@ so the accuracy is free. `tiny.en` remains selectable for slower hardware.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  UI (React 19 + Tailwind v4)                             │
+│  UI (Jetpack Compose, androidApp)                        │
 ├──────────────────────────────────────────────────────────┤
-│  Features: discovery · subscriptions · player            │
-│            downloads · filter                            │
+│  PlaybackController · Media3 playback service            │
+│  LiveFilterEngine · TranscriptionCore · whisper.cpp JNI  │
+│  Downloader · Prefilter            (androidApp, Android) │
 ├──────────────────────────────────────────────────────────┤
-│  Data: Dexie (IndexedDB) + repositories                  │
-├──────────────────────────────────────────────────────────┤
-│  Platform abstraction  ◄── the important seam            │
-│    http · player · transcriber · files · downloads       │
-├────────────────────────────┬─────────────────────────────┤
-│  Web impls (browser dev)   │  Native impls (Android)     │
-│  fetch + dev passthrough   │  CapacitorHttp              │
-│  HTMLAudioElement          │  Media3 / ExoPlayer         │
-│  transformers.js Whisper   │  whisper.cpp JNI            │
-│  OPFS                      │  Capacitor Filesystem       │
-└────────────────────────────┴─────────────────────────────┘
+│  shared/commonMain — Kotlin Multiplatform                │
+│    models · SQLDelight data layer · feed parsing         │
+│    subscription rules · wordlist compiler · transcripts  │
+│    chapters · discovery · backup importer                │
+│    (one HTTP seam; an iOS target slots in here)          │
+└──────────────────────────────────────────────────────────┘
 ```
 
-The **platform abstraction** is the load-bearing design decision. Every capability that
-differs between browser and device sits behind an interface with two implementations,
-selected once at startup by capability detection. This means the entire app — feed parsing,
-subscription lifecycle, matching, filter-map construction, all UI — is developed and tested
-in a browser with hot reload, and only playback, transcription and download *implementations*
-require an Android build loop.
+The app was originally a React PWA in a Capacitor WebView with a platform-abstraction
+seam; it was rebuilt in Kotlin after the screen-off reliability campaign proved the
+WebView is structurally the wrong home for a pipeline that must survive backgrounding
+(the OS freezes the renderer, starves it of network in doze, and kills it under
+pressure — each was field-diagnosed as "the podcast just stops"). The load-bearing
+seam survived the rewrite in a different form: everything platform-neutral lives in
+`shared/commonMain` behind a single injected HTTP interface, tested on the host JVM,
+and the behavioral contract of the filter is pinned by golden fixtures generated from
+the original implementation.
 
 ## The filter pipeline
 
@@ -200,26 +200,29 @@ exclusion list can enumerate the collisions. Recall is improved by **adding term
 inflections to the wordlist**, which cannot misfire this way. The false positives above
 are pinned as regression tests in `matcher.test.ts`.
 
-## Playback and why it is native
+## Playback and filtering are one process
 
 The filter action is "skip", so playback must evaluate position against the filter map
-continuously and seek past flagged spans. Doing this in the WebView is not viable:
-`requestAnimationFrame` is suspended and timers are throttled when the screen is off, so
-flagged spans would sail straight through during exactly the normal listening case.
+continuously and seek past flagged spans. Playback lives in a **Media3/ExoPlayer
+foreground service**; spans are evaluated on a native handler at ~20ms tick, and the
+just-in-time analysis pipeline (LiveFilterEngine) runs in the same process — the same
+foreground standing, wakelocks and doze exemptions as the audio it guards. When
+playback is alive, filtering is alive, by construction.
 
-So on Android, playback lives in a **Media3/ExoPlayer foreground service**. The filter map is
-handed to native at load time and evaluated on a native handler at ~20ms, independent of the
-WebView's lifecycle. That service also owns the MediaSession, giving lock-screen and Bluetooth
-controls for free. The web player implementation (rAF-driven, foreground-only) exists for
-browser dev.
+Two invariants carry the design: **unanalyzed audio is unknown, not clean** — playback
+never runs past the end of analyzed coverage, and the service holds at the frontier —
+and **analysis stops when far enough ahead**, so just-in-time filtering never decays
+into an eager pipeline burning battery on episodes nobody plays.
 
-Because skips shorten the audio, the player tracks two clocks — **original position** (what
-gets persisted for resume, and what the scrubber maps to) and **filtered position** (elapsed
-listening time). The mapping between them is derived from the filter map.
+Because skips shorten the audio, the player tracks two clocks — **original position**
+(what gets persisted for resume, and what the scrubber maps to) and **filtered
+position** (elapsed listening time). The mapping between them is derived from the
+filter map.
 
 ## Data model
 
-Dexie/IndexedDB, one store per concern:
+SQLite via SQLDelight — rows are JSON documents beside their indexed columns,
+one table per concern:
 
 - `podcasts` — feed metadata, artwork, feed URL, etag/last-modified for conditional refresh
 - `episodes` — enclosure URL, duration, guid, publish date, `podcast:transcript` and `podcast:chapters` URLs
@@ -251,6 +254,5 @@ and OPML import cover everything search misses.
 
 ## Stack
 
-React 19 · TypeScript · Vite · Tailwind v4 · Dexie · Zustand · fast-xml-parser ·
-Capacitor 8 · Media3/ExoPlayer · whisper.cpp
-
+Kotlin Multiplatform · Jetpack Compose · SQLDelight · kotlinx-serialization ·
+Media3/ExoPlayer · WorkManager-free streaming downloader · whisper.cpp (vendored, JNI)

@@ -1,0 +1,23 @@
+# ninja log v5
+1	26	1785033401126222024	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-alloc.c.o	330f24f02bcf25a5
+0	29	1785033401129225677	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml.c.o	c31d0d830a3773d5
+1	31	1785033401128078390	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-quants.c.o	219e589ac471b3ba
+1	37	1785033401138604132	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-threading.cpp.o	a0ddf135999ad504
+0	39	1785033401138589799	CMakeFiles/filterpod_whisper.dir/whisper_jni.cpp.o	9b060ad0e652304e
+1	40	1785033401140876829	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-backend.cpp.o	5c4348418119c7bd
+1	41	1785033401139748418	whisper/ggml/src/CMakeFiles/ggml-base.dir/ggml-opt.cpp.o	8c02c45ac561eecb
+2	43	1785033401141460993	whisper/ggml/src/CMakeFiles/ggml.dir/ggml-backend-reg.cpp.o	15ff85f618973ec5
+3	67	1785033401161895646	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-hbm.cpp.o	ee62d826b00432bd
+31	71	1785033401168279365	whisper/src/CMakeFiles/whisper.dir/whisper.cpp.o	2eb85d7a465e7165
+41	81	1785033401185862000	whisper/ggml/src/libggml-base.a	2d118811304f218f
+3	413	1785033401507522746	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-quants.c.o	d04b6f603154bf18
+29	438	1785033401531279550	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/mmq.cpp.o	3baac5a2c40c421e
+26	551	1785033401642572727	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/amx.cpp.o	b1e95afc957f51ad
+3	555	1785033401648452324	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-traits.cpp.o	89ded4b7eea2b01e
+2	734	1785033401821610998	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.cpp.o	ec761dd289a3a45c
+2	937	1785033402026959185	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu-aarch64.cpp.o	dc798a10ae3cad83
+2	3201	1785033404285433660	whisper/ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.c.o	58f8dcf0ba7673f
+3201	3233	1785033404338058000	whisper/ggml/src/libggml-cpu.a	c7fe9381195092e
+3233	3262	1785033404367008000	whisper/ggml/src/libggml.a	36e57f54357fdd0
+3262	3292	1785033404397562000	whisper/src/libwhisper.a	d58e3e51eb645f30
+3292	3344	1785033404440559003	/Users/mhamann/projects/filterpod/android/app/build/intermediates/cxx/Release/5s2m2t4v/obj/arm64-v8a/libfilterpod_whisper.so	731dddb7ce710774
