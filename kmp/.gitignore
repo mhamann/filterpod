@@ -4,3 +4,4 @@ local.properties
 .kotlin/
 *.iml
 .idea/
+.cxx/

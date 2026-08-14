@@ -151,8 +151,24 @@ fun LibraryScreen(nav: NavState) {
             .sortedByDescending { it.lastPlayedAt }
             .take(2)
     }
+    /*
+     * Progress rows outlive their episode rows: episode metadata is rebuilt by feed
+     * refresh, so right after a restore the episodes these rows point at may not exist
+     * yet — and some never will again (older than the feed's window). So the lookup
+     * retries briefly while a refresh could still land them, and the section renders
+     * from what actually resolved: a "Continue" header over nothing is a bug report
+     * waiting to happen, and rows whose episode is gone are not offers to continue.
+     */
     val continueEpisodes by produceState(initialValue = emptyMap<String, Episode>(), continueRows) {
-        value = continueRows.mapNotNull { repo.getEpisode(it.episodeId) }.associateBy { it.id }
+        repeat(15) { attempt ->
+            val found = continueRows.mapNotNull { repo.getEpisode(it.episodeId) }.associateBy { it.id }
+            value = found
+            if (found.size == continueRows.size || continueRows.isEmpty()) return@produceState
+            kotlinx.coroutines.delay(if (attempt < 5) 2_000L else 10_000L)
+        }
+    }
+    val continueCards = remember(continueRows, continueEpisodes) {
+        continueRows.mapNotNull { row -> continueEpisodes[row.episodeId]?.let { row to it } }
     }
 
     val reorderEnabled = trimmed.isEmpty() && localOrder.size >= 2
@@ -201,24 +217,21 @@ fun LibraryScreen(nav: NavState) {
                     }
                 }
             } else {
-                if (trimmed.isEmpty() && continueRows.isNotEmpty()) {
+                if (trimmed.isEmpty() && continueCards.isNotEmpty()) {
                     item(key = "continue-label", span = { GridItemSpan(maxLineSpan) }) {
                         SectionLabel("Continue", Modifier.padding(top = 4.dp))
                     }
                     items(
-                        count = continueRows.size,
-                        key = { "continue:${continueRows[it].episodeId}" },
+                        count = continueCards.size,
+                        key = { "continue:${continueCards[it].first.episodeId}" },
                         span = { GridItemSpan(maxLineSpan) },
                     ) { index ->
-                        val row = continueRows[index]
-                        val episode = continueEpisodes[row.episodeId]
-                        if (episode != null) {
-                            ContinueCard(
-                                title = episode.title,
-                                remainingSec = row.durationSec - row.positionSec,
-                                onClick = { controller.openAsync(episode.id) },
-                            )
-                        }
+                        val (row, episode) = continueCards[index]
+                        ContinueCard(
+                            title = episode.title,
+                            remainingSec = row.durationSec - row.positionSec,
+                            onClick = { controller.openAsync(episode.id) },
+                        )
                     }
                 }
 

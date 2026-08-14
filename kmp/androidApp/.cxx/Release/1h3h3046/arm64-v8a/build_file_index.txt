@@ -1,8 +1,0 @@
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/CMakeLists.txt
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/CMakeLists.txt
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/cmake/build-info.cmake
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/cmake/whisper-config.cmake.in
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/ggml/CMakeLists.txt
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/ggml/src/CMakeLists.txt
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt
-/Users/mhamann/projects/filterpod/android/app/src/main/cpp/whisper.cpp/src/CMakeLists.txt

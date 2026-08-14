@@ -16,7 +16,33 @@ import java.io.File
  * Application-scoped object graph. Deliberately hand-wired — the app has one graph,
  * assembled once, and a DI framework would be more code than the graph itself.
  */
-class FilterPodApp : Application() {
+class FilterPodApp : Application(), coil3.SingletonImageLoader.Factory {
+
+    /**
+     * Explicit Coil configuration, with a real User-Agent on every image request.
+     *
+     * Some podcast CDNs blocklist the default `okhttp/x` UA outright — Buzzsprout
+     * answers it with a plain 403 (verified: same URL, curl 200, okhttp-UA 403) —
+     * which rendered every Buzzsprout show artless with not one log line to say why.
+     * The debug logger stays on in debug builds for exactly that class of silence.
+     */
+    override fun newImageLoader(context: coil3.PlatformContext): coil3.ImageLoader {
+        val client = okhttp3.OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("User-Agent", "FilterPod/1.0 (Android)")
+                        .build(),
+                )
+            }
+            .build()
+        return coil3.ImageLoader.Builder(context)
+            .components {
+                add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = { client }))
+            }
+            .apply { if (BuildConfig.DEBUG) logger(coil3.util.DebugLogger()) }
+            .build()
+    }
 
     lateinit var repo: Repo
         private set
