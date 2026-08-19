@@ -11,6 +11,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.palette.graphics.Palette
 import coil3.BitmapImage
@@ -83,7 +86,7 @@ fun Modifier.artGlowBackground(color: Color): Modifier = drawBehind {
     drawRect(color.copy(alpha = 0.05f * color.alpha))
     drawRect(
         Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.22f * color.alpha), Color.Transparent),
+            colors = listOf(color.copy(alpha = 0.30f * color.alpha), Color.Transparent),
             center = Offset(size.width / 2f, size.height * 0.24f),
             radius = size.width * 0.95f,
         ),
@@ -91,26 +94,28 @@ fun Modifier.artGlowBackground(color: Color): Modifier = drawBehind {
 }
 
 /**
- * The halo: a tighter, slightly brighter pool centered on the artwork, drawn behind
- * it and spilling just past its edges. The art covers the gradient's bright middle,
- * so what actually shows is the rim — the light appears to come *from* the artwork.
- * Stops are placed so the visible intensity peaks right at the art's edge and dies
- * within about a third of its width.
+ * The halo: an intense, tight rim of light hugging the artwork.
+ *
+ * Drawn as a blurred rounded rect at the art's own bounds rather than a radial
+ * gradient — a circle cannot hug a square: its glow was widest at the edge midpoints
+ * and gone at the corners. The blur ring is even all the way around, spills only
+ * ~a tenth of the art's width past the edges, and the art itself covers the solid
+ * middle, so what shows is a bright, close aura that reads as light escaping from
+ * behind the cover.
  */
-fun Modifier.artHaloGlow(color: Color): Modifier = drawBehind {
+fun Modifier.artHaloGlow(color: Color, cornerRadius: Float = 14f): Modifier = drawBehind {
     if (color.alpha == 0f) return@drawBehind
-    val radius = size.width * 0.92f
-    drawRect(
-        brush = Brush.radialGradient(
-            colorStops = arrayOf(
-                0.00f to color.copy(alpha = 0.45f * color.alpha),
-                0.58f to color.copy(alpha = 0.30f * color.alpha),
-                1.00f to Color.Transparent,
-            ),
-            center = center,
-            radius = radius,
-        ),
-        topLeft = Offset(center.x - radius, center.y - radius),
-        size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
-    )
+    val blur = size.width * 0.09f
+    drawIntoCanvas { canvas ->
+        val paint = Paint()
+        paint.asFrameworkPaint().apply {
+            this.color = color.copy(alpha = 0.60f * color.alpha).toArgb()
+            maskFilter = android.graphics.BlurMaskFilter(blur, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawRoundRect(
+            left = 0f, top = 0f, right = size.width, bottom = size.height,
+            radiusX = cornerRadius, radiusY = cornerRadius,
+            paint = paint,
+        )
+    }
 }
