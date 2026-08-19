@@ -90,7 +90,12 @@ class BackupImporter(private val repo: Repo) {
         var progressCount = 0
         var queueCount = 0
 
-        for (podcast in backup.podcasts) repo.upsertPodcast(podcast)
+        // Validators are stripped: the backup carries podcast rows but not episodes,
+        // and an imported etag would make the first refresh answer 304 — "nothing
+        // changed" about episodes this database never had, leaving the show empty.
+        for (podcast in backup.podcasts) {
+            repo.upsertPodcast(podcast.copy(etag = null, lastModified = null))
+        }
 
         for (subscription in backup.subscriptions) {
             if (repo.getSubscription(subscription.podcastId) == null) {

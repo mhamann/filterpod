@@ -53,7 +53,18 @@ class FeedRefresher(
             val response = http.get(feedUrl, headers)
 
             if (response.status == 304) {
-                // 304 is a success: the copy on disk is confirmed current.
+                /*
+                 * A 304 is only a success if we actually hold the episodes it vouches
+                 * for. Validators can outlive their episodes — the migration backup
+                 * restored podcast rows (etag and all) while episodes are rebuilt from
+                 * feeds — and honoring the validator then leaves the show permanently
+                 * empty: every refresh answers "nothing changed" about episodes we
+                 * never had. Seen in the field as two shows with no episodes at all.
+                 */
+                if (repo.listEpisodeIds(podcastId).isEmpty()) {
+                    return fetchFeed(feedUrl, conditional = false)
+                }
+                // The copy on disk is confirmed current.
                 if (existing != null) {
                     repo.upsertPodcast(
                         existing.copy(
