@@ -72,19 +72,45 @@ private suspend fun extractGlowColor(
 }
 
 /**
- * Draws the glow: one soft radial pool behind where the artwork sits, and a barely-
- * there wash over the whole sheet so the color reads as ambience rather than a
- * spotlight. Alphas are deliberately low — the art is the saturated thing on this
- * screen; the background only gets to hum along.
+ * Draws the ambient half of the glow: one soft radial pool behind where the artwork
+ * sits, and a barely-there wash over the whole sheet so the color reads as ambience
+ * rather than a spotlight. Alphas are deliberately low — the art is the saturated
+ * thing on this screen; the background only gets to hum along. The brighter half
+ * lives in [artHaloGlow], anchored to the artwork itself.
  */
 fun Modifier.artGlowBackground(color: Color): Modifier = drawBehind {
     if (color.alpha == 0f) return@drawBehind
     drawRect(color.copy(alpha = 0.05f * color.alpha))
     drawRect(
         Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.30f * color.alpha), Color.Transparent),
+            colors = listOf(color.copy(alpha = 0.22f * color.alpha), Color.Transparent),
             center = Offset(size.width / 2f, size.height * 0.24f),
             radius = size.width * 0.95f,
         ),
+    )
+}
+
+/**
+ * The halo: a tighter, slightly brighter pool centered on the artwork, drawn behind
+ * it and spilling just past its edges. The art covers the gradient's bright middle,
+ * so what actually shows is the rim — the light appears to come *from* the artwork.
+ * Stops are placed so the visible intensity peaks right at the art's edge and dies
+ * within about a third of its width.
+ */
+fun Modifier.artHaloGlow(color: Color): Modifier = drawBehind {
+    if (color.alpha == 0f) return@drawBehind
+    val radius = size.width * 0.92f
+    drawRect(
+        brush = Brush.radialGradient(
+            colorStops = arrayOf(
+                0.00f to color.copy(alpha = 0.45f * color.alpha),
+                0.58f to color.copy(alpha = 0.30f * color.alpha),
+                1.00f to Color.Transparent,
+            ),
+            center = center,
+            radius = radius,
+        ),
+        topLeft = Offset(center.x - radius, center.y - radius),
+        size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
     )
 }

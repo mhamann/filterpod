@@ -237,6 +237,7 @@ fun NowPlayingScreen(
                     Modifier
                         .padding(top = 16.dp)
                         .widthIn(max = 300.dp)
+                        .artHaloGlow(glowColor)
                         .then(dragDismiss),
                 ) {
                     Artwork(

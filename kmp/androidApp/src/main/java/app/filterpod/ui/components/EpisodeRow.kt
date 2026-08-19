@@ -1,6 +1,8 @@
 package app.filterpod.ui.components
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +56,9 @@ fun EpisodeRow(
     onPlay: () -> Unit,
     onToggleQueue: () -> Unit,
     onTogglePlayed: () -> Unit,
+    /** Tap-to-expand: full title and description for rows that want reading room. */
+    expanded: Boolean = false,
+    onToggleExpand: (() -> Unit)? = null,
 ) {
     val played = progress?.played == true
     val listened =
@@ -63,7 +68,14 @@ fun EpisodeRow(
     Box(
         Modifier
             .fillMaxWidth()
-            .background(if (isCurrent) Ember.copy(alpha = 0.05f) else Color.Transparent),
+            .background(if (isCurrent) Ember.copy(alpha = 0.05f) else Color.Transparent)
+            .then(
+                if (onToggleExpand != null) {
+                    Modifier
+                        .clickable(onClick = onToggleExpand)
+                        .animateContentSize()
+                } else Modifier,
+            ),
     ) {
         if (isCurrent) {
             Box(Modifier.matchParentSize()) {
@@ -104,7 +116,7 @@ fun EpisodeRow(
                 Modifier.padding(top = 6.dp),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
-                maxLines = 2,
+                maxLines = if (expanded) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis,
             )
 
@@ -114,7 +126,7 @@ fun EpisodeRow(
                     Modifier.padding(top = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = if (expanded) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

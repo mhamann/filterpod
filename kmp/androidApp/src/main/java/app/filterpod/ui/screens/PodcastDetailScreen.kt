@@ -99,10 +99,29 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
     val subscription = remember(subscriptions) { subscriptions.firstOrNull { it.podcastId == podcastId } }
 
     val episodes by repo.observeEpisodes(podcastId, limit = 1000).collectAsState(initial = emptyList())
-    val shown = remember(episodes, limit) { episodes.take(limit) }
 
     val progressRows by repo.observeProgress().collectAsState(initial = emptyList())
     val progressById = remember(progressRows) { progressRows.associateBy { it.episodeId } }
+
+    /*
+     * Finished episodes are hidden by default — a show page is for what is left to
+     * hear — but never silently: a count-and-toggle row stands where they were, so a
+     * hidden episode is one tap from findable and "where did it go" has an answer
+     * on screen. The exception is the episode playing right now: hiding that from
+     * under the listener would be disorienting.
+     */
+    var showPlayed by rememberSaveable { mutableStateOf(false) }
+    val currentlyPlayingId = controller.state.collectAsState().value.episode?.id
+    val unplayed = remember(episodes, progressById, currentlyPlayingId) {
+        episodes.filter { progressById[it.id]?.played != true || it.id == currentlyPlayingId }
+    }
+    val playedCount = episodes.size - unplayed.size
+    val visible = if (showPlayed) episodes else unplayed
+    val shown = remember(visible, limit) { visible.take(limit) }
+
+    /** Rows opened for full-title/description reading. Tap toggles. Plain remember:
+     * a Set is not Bundle-saveable, and expansion is not worth surviving process death. */
+    var expandedIds by remember { mutableStateOf(setOf<String>()) }
     val queue by repo.observeQueue().collectAsState(initial = emptyList())
     val queuedIds = remember(queue) { queue.map { it.episodeId }.toSet() }
     val downloads by repo.observeDownloads().collectAsState(initial = emptyList())
@@ -263,6 +282,32 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
 
             item(key = "list-divider") { HairlineDivider(Modifier.padding(top = 16.dp)) }
 
+            if (playedCount > 0) {
+                item(key = "played-toggle") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { showPlayed = !showPlayed }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            if (showPlayed) "Showing $playedCount played"
+                            else "$playedCount played hidden",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            if (showPlayed) "Hide" else "Show",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Ember,
+                        )
+                    }
+                    HairlineDivider()
+                }
+            }
+
             items(count = shown.size, key = { shown[it].id }) { index ->
                 val episode = shown[index]
                 Column {
@@ -287,6 +332,12 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                                 // queue the same way a finished episode does.
                                 if (next) repo.removeFromQueue(episode.id)
                             }
+                        },
+                        expanded = episode.id in expandedIds,
+                        onToggleExpand = {
+                            expandedIds =
+                                if (episode.id in expandedIds) expandedIds - episode.id
+                                else expandedIds + episode.id
                         },
                     )
                     HairlineDivider()
