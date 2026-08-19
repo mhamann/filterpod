@@ -195,13 +195,16 @@ fun NowPlayingScreen(
         )
     }
 
+    // A hint of the artwork's own color behind everything, so each show tints the room.
+    val glowColor by rememberArtworkGlow(episode.artworkUrl ?: state.podcast?.artworkUrl)
+
     Surface(
         Modifier
             .fillMaxSize()
             .graphicsLayer { translationY = dragY },
         color = MaterialTheme.colorScheme.background,
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().artGlowBackground(glowColor)) {
             // Header strip: always drag-dismissable — the part people reach for.
             Row(
                 Modifier

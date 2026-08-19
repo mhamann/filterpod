@@ -74,6 +74,8 @@ dependencies {
 
     implementation("io.coil-kt.coil3:coil-compose:3.2.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.2.0")
+    // Dominant-color extraction from artwork, for the now-playing glow.
+    implementation("androidx.palette:palette-ktx:1.0.0")
 
     // The playback/filter core, moved from the Capacitor app.
     implementation("androidx.media3:media3-exoplayer:1.8.0")
