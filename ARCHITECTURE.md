@@ -191,9 +191,9 @@ with real audio. Two variants were tried and rejected:
   real words, so there is no leetspeak to defeat, and profanity's near-homophones are
   innocent high-frequency words: duck, ship, sheet, fork, witch.
 - **Edit distance ≤ 1, guarded** — implemented, then removed. Over seven minutes of real
-  podcast audio it produced nine matches and every one was wrong: *where* and *whole* →
-  juber, *that's* → gjng, *Suckers.* → shpx, *center.* → phag. Exact matching over the
-  same audio produced zero false positives.
+  podcast audio it produced nine matches and every one was wrong: ordinary words like
+  *where*, *whole*, *that's* and *center* each landed within one edit of a flagged term.
+  Exact matching over the same audio produced zero false positives.
 
 The lesson is that ordinary English sits at edit distance 1 from profanity, so no
 exclusion list can enumerate the collisions. Recall is improved by **adding terms and

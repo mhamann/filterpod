@@ -29,7 +29,7 @@ val DEFAULT_PROFILES: List<FilterProfile> = listOf(
     FilterProfile(
         id = "standard",
         name = "Standard",
-        // `scatological` belongs here: it covers "fuvg" and its compounds, the most
+        // `scatological` belongs here: it covers the most
         // common moderate profanity in podcast speech. Only `blasphemy` is left to
         // Family.
         severities = listOf(Severity.MODERATE, Severity.STRONG),

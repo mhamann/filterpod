@@ -34,10 +34,15 @@ class WordlistCompilerParityTest {
         Json.parseToJsonElement(json).jsonObject
     }
 
+    /** ROT13, matching the wordlist's own storage; the fixture expects the plaintext. */
+    private fun rot13(s: String) = buildString {
+        for (c in s) append(if (c in 'a'..'z') 'a' + (c - 'a' + 13) % 26 else c)
+    }
+
     private val standardOverrides = listOf(
         WordOverride("holy guacamole", WordOverride.ACTION_BLOCK, Severity.MODERATE, Category.CUSTOM),
         WordOverride("frak", WordOverride.ACTION_BLOCK, Severity.MODERATE, Category.CUSTOM),
-        WordOverride("uryy", WordOverride.ACTION_ALLOW, Severity.MILD, Category.BLASPHEMY),
+        WordOverride(rot13("uryy"), WordOverride.ACTION_ALLOW, Severity.MILD, Category.BLASPHEMY),
     )
 
     private fun assertCompiledMatchesFixture(fixtureName: String, compiled: CompiledWordlist) {
