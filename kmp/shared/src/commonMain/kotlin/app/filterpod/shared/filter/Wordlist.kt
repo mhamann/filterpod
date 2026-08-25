@@ -6,6 +6,14 @@ import app.filterpod.shared.model.Severity
 /**
  * The bundled wordlist, ported from src/features/filter/wordlist.ts.
  *
+ * Terms are stored ROT13-encoded. That is obfuscation, not secrecy — the app needs
+ * plaintext at runtime and this repository is public — but it keeps the list from
+ * being casually readable: no wall of profanity for someone browsing the source, no
+ * hits for someone searching the words, nothing for a kid to stumble across. The
+ * matcher's behavior is pinned by the parity fixtures, so an encoding mistake here
+ * fails tests rather than slipping through. To add a term, encode it first:
+ * `echo word | tr 'A-Za-z' 'N-ZA-Mn-za-m'`.
+ *
  * Entries are base forms only — inflections (-s, -ing, -ed, -er, -y) are generated at
  * compile time by [expandVariants], so this table stays readable and a new term only
  * needs one line.
@@ -27,68 +35,82 @@ private val S = Severity.STRONG
 private val M = Severity.MODERATE
 private val L = Severity.MILD
 
+/** ROT13, so the list is not casually readable; see the header note. */
+private fun rot13(s: String): String = buildString {
+    for (c in s) append(
+        when (c) {
+            in 'a'..'z' -> 'a' + (c - 'a' + 13) % 26
+            in 'A'..'Z' -> 'A' + (c - 'A' + 13) % 26
+            else -> c
+        },
+    )
+}
+
+private fun e(term: String, severity: Severity, category: Category, noVariants: Boolean = false) =
+    WordEntry(rot13(term), severity, category, noVariants)
+
 val WORDLIST: List<WordEntry> = listOf(
     // --- strong profanity ---
-    WordEntry("shpx", S, Category.PROFANITY),
-    WordEntry("mothershpxer", S, Category.PROFANITY),
-    WordEntry("clustershpx", S, Category.PROFANITY),
-    WordEntry("phag", S, Category.PROFANITY),
-    WordEntry("pbpxfhpxre", S, Category.PROFANITY),
+    e("shpx", S, Category.PROFANITY),
+    e("zbgureshpxre", S, Category.PROFANITY),
+    e("pyhfgreshpx", S, Category.PROFANITY),
+    e("phag", S, Category.PROFANITY),
+    e("pbpxfhpxre", S, Category.PROFANITY),
 
     // --- moderate profanity ---
-    WordEntry("fuvg", M, Category.SCATOLOGICAL),
-    WordEntry("bullfuvg", M, Category.SCATOLOGICAL),
-    WordEntry("horsefuvg", M, Category.SCATOLOGICAL),
-    WordEntry("dipfuvg", M, Category.SCATOLOGICAL),
-    WordEntry("ovgpu", M, Category.PROFANITY),
-    WordEntry("onfgneq", M, Category.PROFANITY),
-    WordEntry("nffubyr", M, Category.PROFANITY),
-    WordEntry("qvpxurnq", M, Category.PROFANITY),
-    WordEntry("cevpx", M, Category.PROFANITY, noVariants = true),
-    WordEntry("gjng", M, Category.PROFANITY),
-    WordEntry("jnaxre", M, Category.PROFANITY),
-    WordEntry("obyybpxf", M, Category.PROFANITY, noVariants = true),
-    WordEntry("cvff", M, Category.SCATOLOGICAL),
-    WordEntry("cvffed", M, Category.SCATOLOGICAL, noVariants = true),
-    WordEntry("tbqqnza", M, Category.BLASPHEMY),
-    WordEntry("tbqqnzait", M, Category.BLASPHEMY, noVariants = true),
+    e("fuvg", M, Category.SCATOLOGICAL),
+    e("ohyyfuvg", M, Category.SCATOLOGICAL),
+    e("ubefrfuvg", M, Category.SCATOLOGICAL),
+    e("qvcfuvg", M, Category.SCATOLOGICAL),
+    e("ovgpu", M, Category.PROFANITY),
+    e("onfgneq", M, Category.PROFANITY),
+    e("nffubyr", M, Category.PROFANITY),
+    e("qvpxurnq", M, Category.PROFANITY),
+    e("cevpx", M, Category.PROFANITY, noVariants = true),
+    e("gjng", M, Category.PROFANITY),
+    e("jnaxre", M, Category.PROFANITY),
+    e("obyybpxf", M, Category.PROFANITY, noVariants = true),
+    e("cvff", M, Category.SCATOLOGICAL),
+    e("cvffrq", M, Category.SCATOLOGICAL, noVariants = true),
+    e("tbqqnza", M, Category.BLASPHEMY),
+    e("tbqqnzavg", M, Category.BLASPHEMY, noVariants = true),
 
     // --- mild ---
-    WordEntry("qnza", L, Category.PROFANITY),
-    WordEntry("dammit", L, Category.PROFANITY, noVariants = true),
-    WordEntry("uryy", L, Category.PROFANITY, noVariants = true),
-    WordEntry("penc", L, Category.SCATOLOGICAL),
-    WordEntry("nff", L, Category.PROFANITY, noVariants = true),
-    WordEntry("nefr", L, Category.PROFANITY),
-    WordEntry("wnpxnff", L, Category.PROFANITY),
-    WordEntry("qhzonff", L, Category.PROFANITY),
-    WordEntry("qbhpuront", L, Category.PROFANITY),
-    WordEntry("bloody", L, Category.PROFANITY, noVariants = true),
-    WordEntry("bugger", L, Category.PROFANITY),
-    WordEntry("git", L, Category.PROFANITY, noVariants = true),
+    e("qnza", L, Category.PROFANITY),
+    e("qnzzvg", L, Category.PROFANITY, noVariants = true),
+    e("uryy", L, Category.PROFANITY, noVariants = true),
+    e("penc", L, Category.SCATOLOGICAL),
+    e("nff", L, Category.PROFANITY, noVariants = true),
+    e("nefr", L, Category.PROFANITY),
+    e("wnpxnff", L, Category.PROFANITY),
+    e("qhzonff", L, Category.PROFANITY),
+    e("qbhpuront", L, Category.PROFANITY),
+    e("oybbql", L, Category.PROFANITY, noVariants = true),
+    e("ohttre", L, Category.PROFANITY),
+    e("tvg", L, Category.PROFANITY, noVariants = true),
 
     // --- sexual ---
-    WordEntry("oybjwbo", S, Category.SEXUAL),
-    WordEntry("unaqwbo", S, Category.SEXUAL),
-    WordEntry("qvyqb", M, Category.SEXUAL),
-    WordEntry("obare", M, Category.SEXUAL),
-    WordEntry("ubeal", L, Category.SEXUAL, noVariants = true),
-    WordEntry("fyhg", M, Category.SEXUAL),
-    WordEntry("juber", M, Category.SEXUAL),
-    WordEntry("cbea", L, Category.SEXUAL),
-    WordEntry("wrexbss", M, Category.SEXUAL),
+    e("oybjwbo", S, Category.SEXUAL),
+    e("unaqwbo", S, Category.SEXUAL),
+    e("qvyqb", M, Category.SEXUAL),
+    e("obare", M, Category.SEXUAL),
+    e("ubeal", L, Category.SEXUAL, noVariants = true),
+    e("fyhg", M, Category.SEXUAL),
+    e("juber", M, Category.SEXUAL),
+    e("cbea", L, Category.SEXUAL),
+    e("wrexbss", M, Category.SEXUAL),
 
     // --- blasphemy ---
     // Only skipped by the Family profile, which is the profile whose users ask for it.
-    WordEntry("jesus christ", L, Category.BLASPHEMY, noVariants = true),
-    WordEntry("christ almighty", L, Category.BLASPHEMY, noVariants = true),
-    WordEntry("oh my god", L, Category.BLASPHEMY, noVariants = true),
+    e("wrfhf puevfg", L, Category.BLASPHEMY, noVariants = true),
+    e("puevfg nyzvtugl", L, Category.BLASPHEMY, noVariants = true),
+    e("bu zl tbq", L, Category.BLASPHEMY, noVariants = true),
 )
 
 /**
  * Suffix inflections applied to single-word entries.
- * `shpx` alone would miss `shpxing`, `shpxed`, `shpxer`, `shpxs` — far more common in
- * speech than the bare stem.
+ * the bare stem alone would miss the -ing/-ed/-er/-s forms, which are far more
+ * common in speech.
  */
 private val SUFFIXES = listOf("s", "es", "ed", "ing", "er", "ers", "y", "in", "in'")
 
@@ -107,8 +129,8 @@ fun expandVariants(entry: WordEntry): List<String> {
 
     for (suffix in SUFFIXES) {
         forms.add(base + suffix)
-        // fuvg -> fuvgting is handled by the plain concat, but single-consonant-final
-        // stems double before a vowel suffix: bug -> bugging.
+        // Plain concatenation covers most stems, but single-consonant-final stems
+        // double before a vowel suffix: bug -> bugging.
         if (!isVowel && DOUBLING_STEM.containsMatchIn(base) && VOWEL_SUFFIX.containsMatchIn(suffix)) {
             forms.add(base + lastChar + suffix)
         }

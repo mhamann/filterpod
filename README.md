@@ -107,7 +107,7 @@ Verify after any NDK or whisper.cpp bump that every `LOAD` segment of
 | Profile | Cuts | Notes |
 |---|---|---|
 | Family | strong + moderate + mild | Includes casual blasphemy. The default |
-| Standard | strong + moderate | Leaves "qnza" and "uryy" alone |
+| Standard | strong + moderate | Leaves the mild tier alone |
 | Strong only | strong | |
 | Off | nothing | |
 

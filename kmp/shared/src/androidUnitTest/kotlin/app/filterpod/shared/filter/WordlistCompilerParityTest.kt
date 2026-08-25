@@ -22,10 +22,16 @@ import kotlin.test.assertTrue
 class WordlistCompilerParityTest {
 
     private val fixtures: JsonObject by lazy {
-        val stream = checkNotNull(javaClass.classLoader.getResourceAsStream("filter-fixtures.json")) {
-            "filter-fixtures.json missing — regenerate with FILTER_FIXTURES=1 npx vitest run exportParityFixtures"
+        // Base64-wrapped for the same reason the wordlist is ROT13'd: the fixtures
+        // spell out every term, and the goldens should not be a casually readable
+        // wall of profanity in the repo. These are frozen goldens — the TypeScript
+        // generator retired with the Capacitor app — so re-encoding only ever happens
+        // alongside a deliberate behavioral change.
+        val stream = checkNotNull(javaClass.classLoader.getResourceAsStream("filter-fixtures.b64")) {
+            "filter-fixtures.b64 missing"
         }
-        Json.parseToJsonElement(stream.readBytes().decodeToString()).jsonObject
+        val json = java.util.Base64.getMimeDecoder().decode(stream.readBytes()).decodeToString()
+        Json.parseToJsonElement(json).jsonObject
     }
 
     private val standardOverrides = listOf(
