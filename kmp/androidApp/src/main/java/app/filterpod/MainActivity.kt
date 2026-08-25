@@ -12,4 +12,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent { AppRoot() }
     }
+
+    override fun onStart() {
+        super.onStart()
+        // Coming back hours later, the playback service the controller remembers may
+        // long since have been stopped by the OS; reconcile before the user taps play.
+        FilterPodApp.instance.controller.ensureSessionAlive()
+    }
 }

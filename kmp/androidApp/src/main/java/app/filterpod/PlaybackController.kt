@@ -488,10 +488,36 @@ class PlaybackController(
             openAsync(s.episode.id, autoPlay = true)
             return
         }
-        // Still starting from a load issued moments ago; play once it is up.
         val running = service()
-        if (running == null) PlaybackService.pendingPlay = true else running.play()
+        when {
+            running != null -> running.play()
+            // Mid-open: the service was just asked to start and will consume the flag.
+            s.preparing || s.state == "loading" -> PlaybackService.pendingPlay = true
+            // The session this controller remembers is gone: Android stops an idle
+            // (paused, non-foreground) playback service after a while, and hours later
+            // "loaded" is a memory of a service that no longer exists. Parking a flag
+            // here was a black hole — nothing was ever going to start the service and
+            // consume it, so the play button silently did nothing until the user
+            // swiped the app away. Re-open instead; progress was saved at pause.
+            s.episode != null -> {
+                _state.value = s.copy(loaded = false, state = "paused")
+                openAsync(s.episode.id, autoPlay = true)
+                return
+            }
+        }
         _state.value = _state.value.copy(catchingUp = false)
+    }
+
+    /**
+     * Reconciles remembered state with reality when the UI returns to the foreground.
+     * A dead service is demoted to a restored-but-not-loaded episode, so the UI shows
+     * the truth and the next play press takes the full open path.
+     */
+    fun ensureSessionAlive() {
+        val s = _state.value
+        if (s.loaded && !s.preparing && s.state != "loading" && service() == null) {
+            _state.value = s.copy(loaded = false, state = "paused")
+        }
     }
 
     fun pause() {
