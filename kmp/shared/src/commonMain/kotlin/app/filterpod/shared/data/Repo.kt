@@ -78,7 +78,8 @@ class Repo(
 
     suspend fun getActiveProfile(): FilterProfile {
         val settings = getSettings()
-        return getFilterProfile(settings.activeFilterProfileId) ?: DEFAULT_PROFILES[1]
+        return getFilterProfile(settings.activeFilterProfileId)
+            ?: DEFAULT_PROFILES.first { it.id == DEFAULT_SETTINGS.activeFilterProfileId }
     }
 
     /** Resolves the profile for an episode, honouring a per-subscription override. */

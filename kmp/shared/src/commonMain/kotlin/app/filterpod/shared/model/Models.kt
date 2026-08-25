@@ -219,7 +219,7 @@ data class QueueItem(
 
 @Serializable
 data class Settings(
-    val activeFilterProfileId: String = "standard",
+    val activeFilterProfileId: String = "family",
     val playbackRate: Double = 1.0,
     val skipForwardSec: Int = 30,
     val skipBackSec: Int = 15,
