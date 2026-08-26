@@ -530,37 +530,43 @@ private fun SkipButton(seconds: Int, forward: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(40.dp)) {
+        // 44dp, not 40: the arrowhead needs room outside the arc, and a head clipped
+        // by the canvas edge was part of what made these unreadable.
+        Canvas(Modifier.size(44.dp)) {
             val stroke = with(density) { 2.dp.toPx() }
-            val inset = stroke
+            val inset = with(density) { 6.dp.toPx() }
             val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
-            // An open arc with a small gap at the top, where the arrowhead sits.
+            /*
+             * One arc for both directions, open at the top; only the head moves. The
+             * gap is 65 degrees, which is the head's width plus breathing room.
+             */
             drawArc(
                 color = color,
-                startAngle = if (forward) -60f else -120f,
-                sweepAngle = if (forward) 300f else -300f,
+                startAngle = -57.5f,
+                sweepAngle = 295f,
                 useCenter = false,
                 topLeft = Offset(inset, inset),
                 size = arcSize,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
             /*
-             * A solid arrowhead at the gap, pointing horizontally — left to rewind,
-             * right to advance, the same reading as the platform's own replay and
-             * forward glyphs. The previous version offset three points by constants
-             * that ignored the curve, which drew a bent paperclip rather than a tip.
+             * A filled triangle at the gap, pointing the way the audio moves: left to
+             * rewind, right to advance. Horizontal rather than tangent to the arc —
+             * at this size a tangent head reads as pointing up, which is what made
+             * the previous version ambiguous.
              */
-            val angle = Math.toRadians(if (forward) -60.0 else -120.0)
+            val angle = Math.toRadians(if (forward) -57.5 else -122.5)
             val r = arcSize.width / 2f
             val tipX = size.width / 2f + r * kotlin.math.cos(angle).toFloat()
             val tipY = size.height / 2f + r * kotlin.math.sin(angle).toFloat()
-            val head = with(density) { 6.dp.toPx() }
-            val halfWidth = head * 0.55f
+            val headLen = with(density) { 11.dp.toPx() }
+            val halfWidth = with(density) { 6.dp.toPx() }
             val dir = if (forward) 1f else -1f
+            val back = tipX - dir * headLen * 0.15f
             val path = Path().apply {
-                moveTo(tipX + dir * head * 0.6f, tipY)
-                lineTo(tipX - dir * head * 0.4f, tipY - halfWidth)
-                lineTo(tipX - dir * head * 0.4f, tipY + halfWidth)
+                moveTo(tipX + dir * headLen * 0.85f, tipY)
+                lineTo(back, tipY - halfWidth)
+                lineTo(back, tipY + halfWidth)
                 close()
             }
             drawPath(path, color)
