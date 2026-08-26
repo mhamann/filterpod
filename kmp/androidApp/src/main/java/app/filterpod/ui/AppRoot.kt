@@ -1,7 +1,14 @@
 package app.filterpod.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -13,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -104,19 +112,47 @@ fun AppRoot() {
                 }
             },
         ) { padding ->
+            // No statusBarsPadding here: Scaffold's own content insets already
+            // include the status bar, and applying both left a dead band above every
+            // heading.
             Box(
                 Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .statusBarsPadding(),
+                    .padding(padding),
             ) {
-                when (val screen = nav.current) {
-                    is Screen.Library -> LibraryScreen(nav)
-                    is Screen.Discover -> DiscoverScreen(nav, screen.initialTerm, discovery)
-                    is Screen.Queue -> QueueScreen(nav)
-                    is Screen.Settings -> SettingsScreen(settings, updateSettings)
-                    is Screen.PodcastDetail -> PodcastDetailScreen(nav, screen.podcastId)
-                    is Screen.PodcastSettings -> PodcastSettingsScreen(nav, screen.podcastId)
+                /*
+                 * Screens move the way you moved: a push slides in from the right
+                 * over an outgoing screen that drifts a fraction of the distance
+                 * (the parallax that makes one feel layered above the other), a pop
+                 * plays it backwards, and a tab switch — siblings, not hierarchy —
+                 * simply crossfades.
+                 */
+                AnimatedContent(
+                    targetState = nav.current,
+                    transitionSpec = {
+                        val slide = tween<IntOffset>(280)
+                        val fade = tween<Float>(200)
+                        when (nav.lastDirection) {
+                            NavState.Direction.FORWARD ->
+                                (slideInHorizontally(slide) { it } + fadeIn(fade)) togetherWith
+                                    (slideOutHorizontally(slide) { -it / 6 } + fadeOut(fade))
+                            NavState.Direction.BACK ->
+                                (slideInHorizontally(slide) { -it / 6 } + fadeIn(fade)) togetherWith
+                                    (slideOutHorizontally(slide) { it } + fadeOut(fade))
+                            NavState.Direction.SIDEWAYS ->
+                                fadeIn(fade) togetherWith fadeOut(fade)
+                        }
+                    },
+                    label = "screen",
+                ) { screen ->
+                    when (screen) {
+                        is Screen.Library -> LibraryScreen(nav)
+                        is Screen.Discover -> DiscoverScreen(nav, screen.initialTerm, discovery)
+                        is Screen.Queue -> QueueScreen(nav)
+                        is Screen.Settings -> SettingsScreen(settings, updateSettings)
+                        is Screen.PodcastDetail -> PodcastDetailScreen(nav, screen.podcastId)
+                        is Screen.PodcastSettings -> PodcastSettingsScreen(nav, screen.podcastId)
+                    }
                 }
             }
         }

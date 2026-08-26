@@ -1,7 +1,9 @@
 package app.filterpod.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 
 /**
@@ -29,20 +31,35 @@ fun Screen.tabRoot(): Screen = when (this) {
 class NavState internal constructor() {
     val stack = mutableStateListOf<Screen>(Screen.Library)
 
+    /**
+     * How the last move went: forward (deeper), back (up), or sideways (tab switch).
+     * Screen transitions read this so a push slides in from the right and a pop
+     * reverses it — motion that says which way you moved through the app.
+     */
+    var lastDirection by androidx.compose.runtime.mutableStateOf(Direction.SIDEWAYS)
+        private set
+
+    enum class Direction { FORWARD, BACK, SIDEWAYS }
+
     val current: Screen get() = stack.last()
     val canPop: Boolean get() = stack.size > 1
 
     fun selectTab(tab: Screen) {
+        lastDirection = Direction.SIDEWAYS
         stack.clear()
         stack.add(tab)
     }
 
     fun push(screen: Screen) {
+        lastDirection = Direction.FORWARD
         stack.add(screen)
     }
 
     fun pop() {
-        if (stack.size > 1) stack.removeAt(stack.lastIndex)
+        if (stack.size > 1) {
+            lastDirection = Direction.BACK
+            stack.removeAt(stack.lastIndex)
+        }
     }
 }
 
