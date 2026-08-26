@@ -116,12 +116,31 @@ be a lie.
 
 ## Assets
 
-- **Feature graphic**, 1024×500 — done: `docs/store/feature-graphic.png`, generated from
-  the same drawing as the icons (`assets/generate-icons.py`).
-- **Phone screenshots**, at least 2, min 320px, aspect at most 2:1 — captured from a real
-  device into `docs/store/`. Raw 1080×2340 captures are center-cropped to 1080×2160 to
-  satisfy the 2:1 limit.
-- **App icon**, 512×512 — `public/icon-512.png` is already this size and correct.
+All current as of v1.0.0, regenerated from the Kotlin app — the v0.3.0 set showed the
+old React interface and no longer resembles what installs.
+
+- **Feature graphic**, 1024×500 — `docs/store/feature-graphic.png`, rasterised from
+  `assets/feature-graphic.svg` (`rsvg-convert -w 1024 -h 500`). The mark has not changed;
+  only the file was regenerated, since the web build that used to hold the PNGs is gone.
+- **App icon**, 512×512 — `docs/store/icon-512.png`, from `assets/icon-store.svg`. This
+  used to point at `public/icon-512.png`, which left the repo with the Capacitor app.
+- **Phone screenshots**, six, 1440×2880 — captured from the Compose UI on a Pixel 7 Pro
+  emulator with the system UI in demo mode (fixed clock, full battery, no notification
+  clutter), then trimmed from 1440×3120 to satisfy Play's 2:1 limit. The trim takes the
+  status bar off the top and the gesture pill off the bottom.
+
+  | File | Shows |
+  |---|---|
+  | `01-nowplaying.png` | The player: artwork glow, cut readout, skip controls |
+  | `02-library.png` | Library grid and Continue listening |
+  | `03-shownotes.png` | Show notes in the player, links intact |
+  | `04-show.png` | A show page: episodes, played hidden, subscribe |
+  | `05-showsettings.png` | Per-show settings: speed, intro/outro trims, notifications |
+  | `06-settings.png` | Filter profiles and custom words |
+
+  Regenerating them means driving the UI by element bounds rather than guessed
+  coordinates — `adb shell uiautomator dump` gives the centres to tap.
+
 - **Privacy policy URL** — required field. `PRIVACY.md` in the repo root; use the GitHub
   URL: `https://github.com/mhamann/filterpod/blob/main/PRIVACY.md`.
 
@@ -138,23 +157,22 @@ hosts directly, neither of which is collection by the developer.
 
 Done in the repo:
 
-- [x] Upload keystore generated (`android/keystore/`, gitignored — **back it up**)
-- [x] `signingConfigs.release` wired into `android/app/build.gradle`
-- [x] `versionCode 3` / `versionName "0.3.0"`
-- [x] Signed AAB (`bundleRelease`) and APK (`assembleRelease`) build and verify
-- [x] Feature graphic
+- [x] Upload keystore (`keystore/`, gitignored — **back it up**); the certificate is the
+      same one v0.3.0 shipped with, so installs upgrade in place
+- [x] `signingConfigs.release` wired into `kmp/androidApp/build.gradle.kts`, gated on the
+      keystore being present so a fresh checkout still builds
+- [x] `versionCode 4` / `versionName "1.0.0"`
+- [x] Signed release APK builds and verifies (`assembleRelease`)
+- [x] Feature graphic, app icon, six screenshots — all regenerated for the Kotlin UI
 - [x] Privacy policy
+- [x] GitHub release v1.0.0 published with the signed APK
 
 Only the account owner can do:
 
 - [ ] Play Console developer account ($25 one-time)
-- [ ] New personal accounts must run a **closed test with 12 testers for 14 days**
-      before production access — plan for this, it is a calendar constraint
-- [ ] Content rating questionnaire and data safety form (answers above)
-- [ ] Upload the AAB, paste the listing copy, attach the assets
-
-## Content rating
-
-The questionnaire will ask about profanity. The honest answer is that the app's purpose is
-removing it and it never displays any: the wordlist is not shown in the UI, and the filter
-levels are described by strength and category rather than by example, deliberately.
+- [ ] Create the app entry and paste this copy
+- [ ] Upload the AAB (`bundleRelease`) — Play wants a bundle, not the APK the GitHub
+      release carries
+- [ ] Complete the Data safety form (see above)
+- [ ] Content rating questionnaire
+- [ ] Choose countries and roll out
