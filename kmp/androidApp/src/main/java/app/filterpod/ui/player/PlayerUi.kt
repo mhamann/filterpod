@@ -66,6 +66,7 @@ import app.filterpod.ui.components.Pill
 import app.filterpod.ui.components.PillTone
 import app.filterpod.ui.components.QueueBadgeButton
 import app.filterpod.ui.components.SectionLabel
+import app.filterpod.ui.components.linkified
 import app.filterpod.ui.components.ThinProgressBar
 import app.filterpod.ui.timecode
 
@@ -162,6 +163,7 @@ fun NowPlayingScreen(
 
     var dragY by remember { mutableFloatStateOf(0f) }
     var showChapters by remember { mutableStateOf(false) }
+    var showNotes by remember { mutableStateOf(false) }
 
     // Chapters, when the feed pointed at a chapters file. Loaded per episode id, not
     // per state emission — status ticks replace the episode reference constantly.
@@ -318,6 +320,22 @@ fun NowPlayingScreen(
                     )
                 }
 
+                if (episode.description.isNotBlank()) {
+                    // Show notes belong with the episode, not only on the show page:
+                    // the links and timestamps are most wanted while it is playing.
+                    Row(
+                        Modifier
+                            .padding(top = 10.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clickable { showNotes = true }
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Show notes", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
                 if (chapters.isNotEmpty()) {
                     // One quiet row instead of a list: the chapter you are in is the
                     // only one worth permanent screen space.
@@ -400,6 +418,29 @@ fun NowPlayingScreen(
                         textAlign = TextAlign.Center,
                     )
                 }
+            }
+        }
+    }
+
+    if (showNotes) {
+        ModalBottomSheet(onDismissRequest = { showNotes = false }) {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp),
+            ) {
+                SectionLabel("Show notes", Modifier.padding(vertical = 8.dp))
+                Text(
+                    episode.title,
+                    Modifier.padding(bottom = 12.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    linkified(episode.description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

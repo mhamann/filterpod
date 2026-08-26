@@ -43,6 +43,28 @@ class DescriptionFormattingTest {
     }
 
     @Test
+    fun descriptiveLinksKeepTheirTarget() {
+        // The "Further reading:" pattern: link text describes the article, so
+        // dropping the href would leave a dead sentence.
+        val text = describe("""<p>Further reading:</p><ul><li><a href="https://www.theverge.com/m6">Apple's new M6 chip</a></li></ul>""")
+        assertTrue(text.contains("[Apple's new M6 chip](https://www.theverge.com/m6)"), text)
+    }
+
+    @Test
+    fun selfNamingLinksStayBare() {
+        // Anchor text that is already the address needs no markdown around it.
+        assertEquals(
+            "Website | thekingschapel.com",
+            describe("""Website | <a href="https://thekingschapel.com">thekingschapel.com</a>"""),
+        )
+    }
+
+    @Test
+    fun nonHttpLinksDegradeToTheirText() {
+        assertEquals("email us", describe("""<a href="mailto:a@b.com">email us</a>"""))
+    }
+
+    @Test
     fun inlineTagsDoNotSplitWords() {
         // Anchor text is kept; the tags around it must not leave stray spaces.
         assertEquals("Visit thekingschapel.com today", describe("Visit <a href='#'>thekingschapel.com</a> today"))

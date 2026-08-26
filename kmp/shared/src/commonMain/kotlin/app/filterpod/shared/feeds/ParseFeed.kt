@@ -187,6 +187,10 @@ private val LINE_BREAK = Regex("(?i)<br\\s*/?>")
 private val PARAGRAPH_END = Regex("(?i)</(p|div|h[1-6]|blockquote|tr|section)\\s*>")
 private val LIST_ITEM = Regex("(?i)<li\\s*[^>]*>")
 
+/** An anchor and its target: `<a href="…">label</a>`. */
+private val ANCHOR =
+    Regex("""(?i)<a\s[^>]*href\s*=\s*["']([^"']*)["'][^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+
 /** Horizontal whitespace only: newlines are structure now and must survive. */
 private val INLINE_SPACE =
     Regex("[ \\t\\u00a0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000\\ufeff]+")
@@ -207,6 +211,24 @@ private fun stripHtml(html: String): String {
     var text = LINE_BREAK.replace(html, "\n")
     text = PARAGRAPH_END.replace(text, "\n\n")
     text = LIST_ITEM.replace(text, "\n• ")
+    text = ANCHOR.replace(text) { match ->
+        // Keep where a link goes, not just what it said. Show notes are full of
+        // "Further reading:" lists whose text describes the article rather than
+        // naming its URL — dropping the href left those as dead sentences. The
+        // label carries the address in markdown form; the UI renders the label and
+        // makes it tappable, so the syntax is never seen.
+        val href = decodeEntities(match.groupValues[1]).trim()
+        val label = HTML_TAG.replace(match.groupValues[2], "").trim()
+        when {
+            label.isEmpty() -> href
+            // A link whose text is already its address needs no decoration.
+            label.equals(href, ignoreCase = true) ||
+                href.equals("https://$label", ignoreCase = true) ||
+                href.equals("http://$label", ignoreCase = true) -> label
+            !href.startsWith("http", ignoreCase = true) -> label
+            else -> "[$label]($href)"
+        }
+    }
     text = HTML_TAG.replace(text, "")
     text = decodeEntities(text)
     text = INLINE_SPACE.replace(text, " ")
