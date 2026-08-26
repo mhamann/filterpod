@@ -15,17 +15,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,9 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.filterpod.FilterPodApp
-import app.filterpod.shared.model.FilterProfile
 import app.filterpod.shared.model.Podcast
-import app.filterpod.shared.model.Subscription
 import app.filterpod.ui.Ember
 import app.filterpod.ui.FeedRefresh
 import app.filterpod.ui.NavState
@@ -56,12 +50,10 @@ import app.filterpod.ui.Screen
 import app.filterpod.ui.components.Artwork
 import app.filterpod.ui.components.EpisodeRow
 import app.filterpod.ui.components.HairlineDivider
-import app.filterpod.ui.components.PanelCard
 import app.filterpod.ui.components.Pill
 import app.filterpod.ui.components.PillTone
 import app.filterpod.ui.components.RefreshBox
 import app.filterpod.ui.components.SectionLabel
-import app.filterpod.ui.components.ToggleRow
 import kotlinx.coroutines.launch
 
 private const val PAGE_SIZE = 30
@@ -142,11 +134,6 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
         return
     }
 
-    val profiles by produceState(initialValue = emptyList<FilterProfile>()) {
-        value = repo.listFilterProfiles()
-    }
-    var showFilteringDialog by remember { mutableStateOf(false) }
-
     RefreshBox(onRefresh = {
         manualError = FeedRefresh.refresh(repo, app.http, current)
         podcastTick++
@@ -164,20 +151,10 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                         }
                         SectionLabel(current.author, Modifier.weight(1f))
-                        // The "More" menu: home of the per-show Filtering control —
-                        // a set-once escape hatch, deliberately not inline.
-                        var menuOpen by remember { mutableStateOf(false) }
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Filled.MoreVert, "More")
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Filtering…") },
-                                onClick = {
-                                    menuOpen = false
-                                    showFilteringDialog = true
-                                },
-                            )
+                        // A gear that lands on a real screen, not a menu whose only
+                        // item was Filtering.
+                        IconButton(onClick = { nav.push(Screen.PodcastSettings(podcastId)) }) {
+                            Icon(Icons.Filled.Settings, "Show settings")
                         }
                     }
                     HairlineDivider()
@@ -270,15 +247,6 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                 }
             }
 
-            if (subscription != null) {
-                item(key = "controls") {
-                    // Queue-first, deliberately: the queue toggle is the one people mean.
-                    NewEpisodeControls(
-                        subscription = subscription,
-                        onUpdate = { updated -> scope.launch { repo.putSubscription(updated) } },
-                    )
-                }
-            }
 
             item(key = "list-divider") { HairlineDivider(Modifier.padding(top = 16.dp)) }
 
@@ -357,25 +325,6 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
         }
     }
 
-    if (showFilteringDialog) {
-        FilteringDialog(
-            profiles = profiles,
-            overrideId = subscription?.filterProfileId,
-            subscribed = subscription != null,
-            onDismiss = { showFilteringDialog = false },
-            onSelect = { profileId ->
-                showFilteringDialog = false
-                val sub = subscription ?: return@FilteringDialog
-                scope.launch {
-                    repo.putSubscription(sub.copy(filterProfileId = profileId))
-                    // Re-tunes the live filter if this show is what's playing — a
-                    // changed setting that quietly waited for the next episode would
-                    // read as a broken one.
-                    controller.applyProfileChange(podcastId)
-                }
-            },
-        )
-    }
 }
 
 @Composable
@@ -419,95 +368,5 @@ private fun Description(text: String) {
     }
 }
 
-/**
- * What happens when this show publishes: join the queue, and/or download.
- * Queue first — that toggle is the distinction people actually mean by "subscribe".
- */
-@Composable
-private fun NewEpisodeControls(
-    subscription: Subscription,
-    onUpdate: (Subscription) -> Unit,
-) {
-    PanelCard(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
-        ToggleRow(
-            title = "Add new episodes to queue",
-            detail = if (subscription.autoQueue == true) "New episodes join the end of your queue" else "Off",
-            checked = subscription.autoQueue == true,
-            onChange = { onUpdate(subscription.copy(autoQueue = it)) },
-        )
-        HairlineDivider()
-        ToggleRow(
-            title = "Download new episodes",
-            detail = if (subscription.autoDownload) {
-                "Keeps the latest ${subscription.autoDownloadLimit} filtered and ready"
-            } else "Off",
-            checked = subscription.autoDownload,
-            onChange = { onUpdate(subscription.copy(autoDownload = it)) },
-        )
-    }
-}
 
-/**
- * Per-show filter level, overriding the app-wide setting — for shows where the
- * wordlist misfires on context. "Default" clears the override.
- */
-@Composable
-private fun FilteringDialog(
-    profiles: List<FilterProfile>,
-    overrideId: String?,
-    subscribed: Boolean,
-    onDismiss: () -> Unit,
-    onSelect: (String?) -> Unit,
-) {
-    // Seeded order, not table order: strictest to off, with Default leading.
-    val orderIds = listOf("family", "standard", "strong-only", "off")
-    val ordered = remember(profiles) {
-        profiles.sortedBy { orderIds.indexOf(it.id).let { i -> if (i < 0) orderIds.size else i } }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Filtering for this show") },
-        text = {
-            Column {
-                if (!subscribed) {
-                    Text(
-                        "Subscribe to this show to set a per-show filter level.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    ProfileChoiceRow("Default (app setting)", overrideId == null) { onSelect(null) }
-                    for (profile in ordered) {
-                        ProfileChoiceRow(profile.name, overrideId == profile.id) { onSelect(profile.id) }
-                    }
-                    Text(
-                        "Takes effect immediately, including anything playing now.",
-                        Modifier.padding(top = 8.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
-}
 
-@Composable
-private fun ProfileChoiceRow(label: String, selected: Boolean, onSelect: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onSelect)
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onSelect)
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-        )
-    }
-}

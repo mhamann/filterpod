@@ -92,9 +92,21 @@ data class Subscription(
     val autoDownload: Boolean = true,
     /** How many recent episodes to keep downloaded; 0 means unlimited. */
     val autoDownloadLimit: Int = 3,
-    val notifyOnNew: Boolean = true,
+    /**
+     * Notify when this show publishes. Default off: a podcast app that starts
+     * buzzing on its own has decided something for the listener that they never
+     * asked for. See [app.filterpod.shared.data.Repo.initialize] for why stored
+     * `true` values from before the feature existed are cleared rather than honored.
+     */
+    val notifyOnNew: Boolean = false,
     /** Position in the library grid, dense from 0. Absent rows sort by recency after ordered ones. */
     val sortOrder: Int? = null,
+    /** Playback speed for this show; null means follow the app-wide setting. */
+    val playbackRate: Double? = null,
+    /** Seconds to skip at the start of an episode — the show's stock intro. */
+    val skipIntroSec: Int = 0,
+    /** Seconds to drop from the end — outro, credits, the next-week teaser. */
+    val skipOutroSec: Int = 0,
     /** New episodes join the end of the queue when the feed refreshes. */
     val autoQueue: Boolean? = null,
     /** Overrides the global filter profile for this feed when set. */

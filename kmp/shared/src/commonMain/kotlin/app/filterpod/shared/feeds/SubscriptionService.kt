@@ -17,6 +17,14 @@ fun interface DownloadRequester {
     suspend fun enqueueDownload(episodeId: String, auto: Boolean)
 }
 
+/** Announces newly published episodes for shows the user asked to be told about. */
+fun interface NewEpisodeSink {
+    suspend fun onNewEpisodes(
+        subscription: app.filterpod.shared.model.Subscription,
+        episodes: List<app.filterpod.shared.model.Episode>,
+    )
+}
+
 /** Deletes a stored download (row and file); wired to the same download manager. */
 fun interface DownloadDeleter {
     suspend fun deleteDownload(episodeId: String)
@@ -34,6 +42,8 @@ class SubscriptionService(
     private val downloads: DownloadRequester,
     private val downloadDeleter: DownloadDeleter,
     private val now: () -> Long,
+    /** Default no-op: notifications are an app-layer concern and optional. */
+    private val newEpisodes: NewEpisodeSink = NewEpisodeSink { _, _ -> },
     /**
      * Fire-and-forget durable backup, the TS `void writeLibraryBackup().catch(() => {})`.
      * The caller decides how to make it asynchronous (typically `scope.launch`);
@@ -111,13 +121,20 @@ class SubscriptionService(
         for (result in results) {
             val subscription = byPodcast[result.podcastId] ?: continue
             if (result.newEpisodeIds.isEmpty()) continue
-            val autoQueue = subscription.autoQueue ?: false
-            if (!subscription.autoDownload && !autoQueue) continue
 
             // Newest first, so a feed that dumps a backlog does not queue it oldest-first.
             val ordered = result.newEpisodeIds
                 .mapNotNull { repo.getEpisode(it) }
                 .sortedByDescending { it.publishedAt }
+
+            // Announced before the auto rules are consulted: wanting to be told is
+            // independent of wanting the episode queued or downloaded.
+            if (subscription.notifyOnNew && ordered.isNotEmpty()) {
+                newEpisodes.onNewEpisodes(subscription, ordered)
+            }
+
+            val autoQueue = subscription.autoQueue ?: false
+            if (!subscription.autoDownload && !autoQueue) continue
 
             if (subscription.autoDownload) {
                 // A limit of 0 means unlimited, as it did in the TS `limit || length`.

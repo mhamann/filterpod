@@ -17,6 +17,7 @@ sealed interface Screen {
     data object Queue : Screen
     data object Settings : Screen
     data class PodcastDetail(val podcastId: String) : Screen
+    data class PodcastSettings(val podcastId: String) : Screen
 }
 
 /** The bottom-nav tab a screen belongs to, for highlighting while a detail is pushed. */

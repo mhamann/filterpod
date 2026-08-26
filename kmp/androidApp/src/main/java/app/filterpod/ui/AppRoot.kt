@@ -48,6 +48,7 @@ import app.filterpod.ui.player.NowPlayingScreen
 import app.filterpod.ui.screens.DiscoverScreen
 import app.filterpod.ui.screens.LibraryScreen
 import app.filterpod.ui.screens.PodcastDetailScreen
+import app.filterpod.ui.screens.PodcastSettingsScreen
 import app.filterpod.ui.screens.QueueScreen
 import app.filterpod.ui.screens.SettingsScreen
 import kotlinx.coroutines.launch
@@ -73,6 +74,15 @@ fun AppRoot() {
     }
 
     val nav = rememberNavState()
+
+    // A tapped new-episode notification lands on that show.
+    val pendingPodcastId by app.pendingPodcastId.collectAsState()
+    LaunchedEffect(pendingPodcastId) {
+        val id = pendingPodcastId ?: return@LaunchedEffect
+        nav.selectTab(Screen.Library)
+        nav.push(Screen.PodcastDetail(id))
+        app.pendingPodcastId.value = null
+    }
     var playerOpen by remember { mutableStateOf(false) }
 
     val discovery = remember { Discovery(app.http) }
@@ -106,6 +116,7 @@ fun AppRoot() {
                     is Screen.Queue -> QueueScreen(nav)
                     is Screen.Settings -> SettingsScreen(settings, updateSettings)
                     is Screen.PodcastDetail -> PodcastDetailScreen(nav, screen.podcastId)
+                    is Screen.PodcastSettings -> PodcastSettingsScreen(nav, screen.podcastId)
                 }
             }
         }

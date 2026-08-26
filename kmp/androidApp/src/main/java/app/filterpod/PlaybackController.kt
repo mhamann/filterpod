@@ -97,6 +97,9 @@ class PlaybackController(
     private val measuredDurationSaved = mutableSetOf<String>()
     private var completionThresholdSec = 30
 
+    /** Per-show settings for what is loaded; drives speed and intro/outro trims. */
+    @Volatile private var activeSubscription: app.filterpod.shared.model.Subscription? = null
+
     /** Edge latches for 'ended' — status is emitted on a timer, not on change. */
     private var sawActive = false
     private var endedHandled = false
@@ -147,6 +150,23 @@ class PlaybackController(
             }
 
             if (state == "loading" || state == "playing" || state == "paused") sawActive = true
+            /*
+             * The outro trim: the last N seconds are credits and next-week teasers,
+             * so reaching them counts as finishing. Shares the ended latch, so this
+             * and a natural end can never both advance the queue.
+             */
+            val outroSec = (activeSubscription?.skipOutroSec ?: 0).toDouble()
+            val hitOutro = outroSec > 0 && durationSec > 0 &&
+                positionSec >= durationSec - outroSec && state == "playing"
+            if (hitOutro && sawActive && !endedHandled) {
+                endedHandled = true
+                scope.launch {
+                    repo.saveProgress(episode.id, durationSec, durationSec, completionThresholdSec, now)
+                    advanceQueue(episode.id)
+                }
+                return
+            }
+
             if (state == "ended" && sawActive && !endedHandled) {
                 endedHandled = true
                 scope.launch {
@@ -283,7 +303,18 @@ class PlaybackController(
         // what is playing.
         repo.enqueueEpisode(episodeId, next = true, now = System.currentTimeMillis())
 
-        val startAtSec = progress?.positionSec ?: 0.0
+        val subscription = repo.getSubscription(episode.podcastId)
+        activeSubscription = subscription
+
+        /*
+         * The intro trim applies to a fresh start only. Resuming means the listener
+         * already got past the intro — moving them forward again would silently skip
+         * content they had not heard.
+         */
+        val resumeAt = progress?.positionSec ?: 0.0
+        val introSec = (subscription?.skipIntroSec ?: 0).toDouble()
+        val startAtSec = if (resumeAt <= 1.0 && introSec > 0) introSec else resumeAt
+        val rate = subscription?.playbackRate ?: settings.playbackRate
         val fileKey = download?.fileKey ?: "audio/$episodeId"
 
         sawActive = false
@@ -294,7 +325,7 @@ class PlaybackController(
             state = "loading",
             positionSec = startAtSec,
             durationSec = (episode.durationSec ?: 0).toDouble(),
-            rate = settings.playbackRate,
+            rate = rate,
             preparing = true,
             loaded = false,
         )
@@ -307,7 +338,7 @@ class PlaybackController(
         // buffers audio while the lead-in transcribes, and gives the engine a home.
         startServiceForLoad(episode, podcast, fileKey, startAtSec)
         service()?.listener = listener
-        service()?.setRate(settings.playbackRate.toFloat())
+        service()?.setRate(rate.toFloat())
         _state.value = _state.value.copy(loaded = true)
 
         startFilterSession(episode, profile, overrides, startAtSec)

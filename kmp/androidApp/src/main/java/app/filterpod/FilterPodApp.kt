@@ -58,6 +58,13 @@ class FilterPodApp : Application(), coil3.SingletonImageLoader.Factory {
         private set
     lateinit var subscriptions: app.filterpod.shared.feeds.SubscriptionService
         private set
+    lateinit var notifier: NewEpisodeNotifier
+        private set
+
+    /**
+     * Show to open because a notification was tapped; the UI consumes and clears it.
+     */
+    val pendingPodcastId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -73,6 +80,7 @@ class FilterPodApp : Application(), coil3.SingletonImageLoader.Factory {
             onLiveSessionStarting = { prefilter.cancelActive() },
         )
         downloader = Downloader(this, repo, onDownloaded = { prefilter.prefilterEpisode(it) })
+        notifier = NewEpisodeNotifier(this)
         refresher = app.filterpod.shared.feeds.FeedRefresher(
             http, repo, app.filterpod.shared.feeds.XmlFeedReader(),
         ) { System.currentTimeMillis() }
@@ -84,6 +92,10 @@ class FilterPodApp : Application(), coil3.SingletonImageLoader.Factory {
             },
             downloadDeleter = { episodeId -> downloader.delete(episodeId) },
             now = { System.currentTimeMillis() },
+            newEpisodes = { subscription, episodes ->
+                val show = repo.getPodcast(subscription.podcastId)?.title ?: "New episode"
+                notifier.notifyNewEpisodes(subscription, episodes, show)
+            },
         )
 
         // The UI's refresh seam, pointed at the real feed layer (the UI was built

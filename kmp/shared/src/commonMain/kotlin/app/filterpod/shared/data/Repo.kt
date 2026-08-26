@@ -58,6 +58,27 @@ class Repo(
                     q.upsertFilterProfile(profile.id, json.encodeToString(FilterProfile.serializer(), profile))
                 }
             }
+
+            /*
+             * New-episode notifications are opt-in, and rows imported from the old app
+             * carry notifyOnNew=true — a value nothing ever honored, because the
+             * feature did not exist. Turning the feature on while trusting those flags
+             * would start buzzing about 27 shows nobody opted into. Clear them once,
+             * stamped, so a later deliberate opt-in sticks.
+             */
+            if (q.getKv(KEY_NOTIFY_RESET).executeAsOneOrNull() == null) {
+                for (row in q.listSubscriptions().executeAsList()) {
+                    val sub = json.decodeFromString(Subscription.serializer(), row)
+                    if (sub.notifyOnNew) {
+                        val cleared = sub.copy(notifyOnNew = false)
+                        q.upsertSubscription(
+                            cleared.podcastId, cleared.subscribedAt,
+                            json.encodeToString(Subscription.serializer(), cleared),
+                        )
+                    }
+                }
+                q.putKv(KEY_NOTIFY_RESET, "1")
+            }
         }
     }
 
@@ -448,5 +469,8 @@ class Repo(
         const val KEY_SETTINGS = "settings"
         /** Stamp written once the Capacitor app's state has been imported. */
         const val KEY_IMPORTED_AT = "importedAt"
+
+        /** Stamp for the one-time clearing of legacy notifyOnNew flags. */
+        const val KEY_NOTIFY_RESET = "notifyOnNewReset"
     }
 }
