@@ -182,13 +182,38 @@ private fun fromCodePoint(codePoint: Long?): String {
 
 private val HTML_TAG = Regex("<[^>]*>")
 
-/** JS `\s`, which includes the Unicode spaces Java's `\s` leaves out. */
-private val JS_WHITESPACE =
-    Regex("[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]+")
+/** Block-level tags that end a line, and the ones that end a paragraph. */
+private val LINE_BREAK = Regex("(?i)<br\\s*/?>")
+private val PARAGRAPH_END = Regex("(?i)</(p|div|h[1-6]|blockquote|tr|section)\\s*>")
+private val LIST_ITEM = Regex("(?i)<li\\s*[^>]*>")
 
-/** Strips markup from a description without pulling in a sanitizer dependency. */
-private fun stripHtml(html: String): String =
-    JS_WHITESPACE.replace(decodeEntities(HTML_TAG.replace(html, " ")), " ").trim()
+/** Horizontal whitespace only: newlines are structure now and must survive. */
+private val INLINE_SPACE =
+    Regex("[ \\t\\u00a0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000\\ufeff]+")
+private val BLANK_LINES = Regex("\\n{3,}")
+private val SPACE_AROUND_NEWLINE = Regex(" *\\n *")
+
+/**
+ * Turns description markup into readable text, keeping the structure the publisher
+ * wrote.
+ *
+ * Show notes are written as HTML — paragraphs, line breaks, link lists — and the
+ * previous version replaced every tag with a space, which collapsed all of it into
+ * one unbroken wall. Tags still go (no sanitizer dependency, and no markup should
+ * ever reach a Text composable), but the block-level ones become the breaks they
+ * stand for, so paragraphs stay paragraphs and a list of links stays a list.
+ */
+private fun stripHtml(html: String): String {
+    var text = LINE_BREAK.replace(html, "\n")
+    text = PARAGRAPH_END.replace(text, "\n\n")
+    text = LIST_ITEM.replace(text, "\n• ")
+    text = HTML_TAG.replace(text, "")
+    text = decodeEntities(text)
+    text = INLINE_SPACE.replace(text, " ")
+    text = SPACE_AROUND_NEWLINE.replace(text, "\n")
+    text = BLANK_LINES.replace(text, "\n\n")
+    return text.trim()
+}
 
 private val TRANSCRIPT_TYPES: Map<String, String> = mapOf(
     "text/vtt" to "text/vtt",

@@ -80,6 +80,27 @@ class Repo(
                 }
                 q.putKv(KEY_NOTIFY_RESET, "1")
             }
+
+            /*
+             * Descriptions stored before the parser kept paragraph structure are flat
+             * walls of text, and a conditional refresh will never rewrite them: an
+             * unchanged feed answers 304, so nothing is re-parsed. Clearing the
+             * validators once forces one full re-fetch per show, after which
+             * conditional refresh resumes normally.
+             */
+            if (q.getKv(KEY_DESCRIPTION_REPARSE).executeAsOneOrNull() == null) {
+                for (row in q.listPodcasts().executeAsList()) {
+                    val podcast = json.decodeFromString(Podcast.serializer(), row)
+                    if (podcast.etag != null || podcast.lastModified != null) {
+                        val cleared = podcast.copy(etag = null, lastModified = null)
+                        q.upsertPodcast(
+                            cleared.id, cleared.feedUrl,
+                            json.encodeToString(Podcast.serializer(), cleared),
+                        )
+                    }
+                }
+                q.putKv(KEY_DESCRIPTION_REPARSE, "1")
+            }
         }
     }
 
@@ -487,5 +508,8 @@ class Repo(
 
         /** Stamp for the one-time clearing of legacy notifyOnNew flags. */
         const val KEY_NOTIFY_RESET = "notifyOnNewReset"
+
+        /** Stamp for the one-time re-fetch that rewrites flattened descriptions. */
+        const val KEY_DESCRIPTION_REPARSE = "descriptionReparse"
     }
 }

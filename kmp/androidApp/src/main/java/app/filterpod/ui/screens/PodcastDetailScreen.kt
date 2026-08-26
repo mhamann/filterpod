@@ -50,6 +50,7 @@ import app.filterpod.ui.Screen
 import app.filterpod.ui.components.Artwork
 import app.filterpod.ui.components.EpisodeRow
 import app.filterpod.ui.components.HairlineDivider
+import app.filterpod.ui.components.linkified
 import app.filterpod.ui.components.Pill
 import app.filterpod.ui.components.PillTone
 import app.filterpod.ui.components.RefreshBox
@@ -361,7 +362,7 @@ private fun Description(text: String) {
     val isLong = text.length > 180
     Column(Modifier.padding(top = 16.dp)) {
         Text(
-            text,
+            linkified(text),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = if (expanded || !isLong) Int.MAX_VALUE else 3,
