@@ -544,22 +544,26 @@ private fun SkipButton(seconds: Int, forward: Boolean, onClick: () -> Unit) {
                 size = arcSize,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
-            // Arrowhead at the gap's leading edge.
-            val angleDeg = if (forward) -60.0 else -120.0
-            val angle = Math.toRadians(angleDeg)
+            /*
+             * A solid arrowhead at the gap, pointing horizontally — left to rewind,
+             * right to advance, the same reading as the platform's own replay and
+             * forward glyphs. The previous version offset three points by constants
+             * that ignored the curve, which drew a bent paperclip rather than a tip.
+             */
+            val angle = Math.toRadians(if (forward) -60.0 else -120.0)
             val r = arcSize.width / 2f
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            val tipX = cx + r * kotlin.math.cos(angle).toFloat()
-            val tipY = cy + r * kotlin.math.sin(angle).toFloat()
-            val head = with(density) { 5.dp.toPx() }
+            val tipX = size.width / 2f + r * kotlin.math.cos(angle).toFloat()
+            val tipY = size.height / 2f + r * kotlin.math.sin(angle).toFloat()
+            val head = with(density) { 6.dp.toPx() }
+            val halfWidth = head * 0.55f
             val dir = if (forward) 1f else -1f
             val path = Path().apply {
-                moveTo(tipX - head * dir, tipY - head)
-                lineTo(tipX + head * dir, tipY)
-                lineTo(tipX - head * dir, tipY + head * 0.2f)
+                moveTo(tipX + dir * head * 0.6f, tipY)
+                lineTo(tipX - dir * head * 0.4f, tipY - halfWidth)
+                lineTo(tipX - dir * head * 0.4f, tipY + halfWidth)
+                close()
             }
-            drawPath(path, color, style = Stroke(width = stroke, cap = StrokeCap.Round))
+            drawPath(path, color)
         }
         Text(
             seconds.toString(),
