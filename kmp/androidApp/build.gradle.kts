@@ -38,6 +38,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Signed with the debug key for now: there is no release keystore in the
+            // repo, and a locally-installable release build is what makes
+            // debug-vs-release performance measurable. Replace before publishing.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
