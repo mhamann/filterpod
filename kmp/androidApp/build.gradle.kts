@@ -30,9 +30,9 @@ android {
         applicationId = "app.filterpod"
         minSdk = 26
         targetSdk = 36
-        // Succeeds the Capacitor app's versionCode 3; the cutover is an upgrade.
-        versionCode = 4
-        versionName = "1.0.0"
+        // Succeeds the Capacitor app's versionCode 3; the cutover was an upgrade.
+        versionCode = 5
+        versionName = "1.0.1"
 
         ndk {
             // arm64 only, matching the Capacitor app: building whisper.cpp four
