@@ -221,7 +221,7 @@ fun NowPlayingScreen(
             Modifier
                 .fillMaxSize()
                 .artGlowBackground(glowColor)
-                .topShade(statusBarHeight + 24.dp)
+                .topShade(statusBarHeight + 72.dp)
                 .statusBarsPadding(),
         ) {
             // Header strip: always drag-dismissable — the part people reach for.
@@ -254,7 +254,7 @@ fun NowPlayingScreen(
             ) {
                 Box(
                     Modifier
-                        .padding(top = 16.dp)
+                        .padding(top = 44.dp)
                         .widthIn(max = 300.dp)
                         .artHaloGlow(glowColor)
                         .then(dragDismiss),

@@ -79,19 +79,27 @@ private suspend fun extractGlowColor(
  * Darkens the very top of the sheet, fading to nothing.
  *
  * The status bar needs contrast against whatever colour the artwork happens to be, but
- * stopping the glow at the inset boundary drew a hard horizontal line across the sheet.
- * The glow now runs full-bleed to the top edge and this shades the strip the clock sits
- * in, so the transition is a gradient rather than a cut.
+ * stopping the glow at the inset boundary drew a hard line across the sheet. The glow
+ * now runs full-bleed to the top edge and this shades the strip the clock sits in.
+ *
+ * The stops follow a smoothstep rather than a straight ramp, and that is the whole
+ * trick: a linear gradient reaches zero with its slope still constant, and the eye
+ * reads that abrupt change in slope as an edge even though no pixel jumps — a Mach
+ * band. Easing the last stretch to zero removes the line without darkening any less
+ * where it counts.
  */
 fun Modifier.topShade(height: Dp): Modifier = drawBehind {
     val end = height.toPx()
     if (end <= 0f) return@drawBehind
+    val peak = 0.42f
+    val stops = Array(9) { i ->
+        val t = i / 8f
+        // smootherstep: zero first and second derivative at both ends
+        val eased = 1f - (t * t * t * (t * (t * 6f - 15f) + 10f))
+        t to Color.Black.copy(alpha = peak * eased)
+    }
     drawRect(
-        brush = Brush.verticalGradient(
-            colors = listOf(Color.Black.copy(alpha = 0.38f), Color.Transparent),
-            startY = 0f,
-            endY = end,
-        ),
+        brush = Brush.verticalGradient(colorStops = stops, startY = 0f, endY = end),
         size = androidx.compose.ui.geometry.Size(size.width, end),
     )
 }
