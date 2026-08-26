@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.filterpod.ui.Ember
@@ -69,10 +71,28 @@ fun ScreenHeader(title: String, action: (@Composable () -> Unit)? = null) {
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.Bottom,
+            // Centre, not bottom: the action is an IconButton with a 48dp touch target
+            // and its glyph centred inside, so bottom-aligning the two boxes floated
+            // the icon well above the title it sits beside.
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(title, style = MaterialTheme.typography.headlineSmall)
+            /*
+             * Font padding trimmed so the text box hugs its glyphs. Centring two boxes
+             * only centres what they contain if the boxes are honest about their
+             * contents: headlineSmall reserves ascender/descender room the word does
+             * not use, which left the icon sitting visibly high beside it.
+             */
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    lineHeightStyle = LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.Both,
+                    ),
+                ),
+            )
             if (action != null) action()
         }
         HairlineDivider()

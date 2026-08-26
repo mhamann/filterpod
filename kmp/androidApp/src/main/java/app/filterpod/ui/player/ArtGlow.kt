@@ -11,6 +11,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -72,6 +73,27 @@ private suspend fun extractGlowColor(
         ?: palette.dominantSwatch
         ?: return null
     return Color(swatch.rgb)
+}
+
+/**
+ * Darkens the very top of the sheet, fading to nothing.
+ *
+ * The status bar needs contrast against whatever colour the artwork happens to be, but
+ * stopping the glow at the inset boundary drew a hard horizontal line across the sheet.
+ * The glow now runs full-bleed to the top edge and this shades the strip the clock sits
+ * in, so the transition is a gradient rather than a cut.
+ */
+fun Modifier.topShade(height: Dp): Modifier = drawBehind {
+    val end = height.toPx()
+    if (end <= 0f) return@drawBehind
+    drawRect(
+        brush = Brush.verticalGradient(
+            colors = listOf(Color.Black.copy(alpha = 0.38f), Color.Transparent),
+            startY = 0f,
+            endY = end,
+        ),
+        size = androidx.compose.ui.geometry.Size(size.width, end),
+    )
 }
 
 /**

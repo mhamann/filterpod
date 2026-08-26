@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -199,6 +202,8 @@ fun NowPlayingScreen(
 
     // A hint of the artwork's own color behind everything, so each show tints the room.
     val glowColor by rememberArtworkGlow(episode.artworkUrl ?: state.podcast?.artworkUrl)
+    val statusBarHeight = androidx.compose.foundation.layout.WindowInsets.statusBars
+        .asPaddingValues().calculateTopPadding()
 
     Surface(
         Modifier
@@ -206,7 +211,19 @@ fun NowPlayingScreen(
             .graphicsLayer { translationY = dragY },
         color = MaterialTheme.colorScheme.background,
     ) {
-        Column(Modifier.fillMaxSize().artGlowBackground(glowColor)) {
+        /*
+         * Order matters: the glow and its scrim paint across the whole sheet, and the
+         * status-bar inset is applied afterwards so only the content moves down. The
+         * colour therefore runs behind the clock and fades, rather than being clipped
+         * at the inset boundary.
+         */
+        Column(
+            Modifier
+                .fillMaxSize()
+                .artGlowBackground(glowColor)
+                .topShade(statusBarHeight + 24.dp)
+                .statusBarsPadding(),
+        ) {
             // Header strip: always drag-dismissable — the part people reach for.
             Row(
                 Modifier

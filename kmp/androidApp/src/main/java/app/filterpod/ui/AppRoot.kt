@@ -164,7 +164,10 @@ fun AppRoot() {
             enter = slideInVertically(initialOffsetY = { it }),
             exit = slideOutVertically(targetOffsetY = { it }),
         ) {
-            Box(Modifier.statusBarsPadding()) {
+            // Full-bleed: the player paints its own glow to the top edge and insets its
+            // own content, so the colour fades under the status bar instead of stopping
+            // at it in a straight line.
+            Box {
                 NowPlayingScreen(
                     queueCount = queue.size,
                     skipBackSec = settings.skipBackSec,
