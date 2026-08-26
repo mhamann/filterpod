@@ -46,3 +46,6 @@ android/keystore/
 
 # Raw device screenshots pre-crop; they carry the phone's own status bar.
 docs/store/raw/
+
+# Release signing material — never committed.
+keystore/

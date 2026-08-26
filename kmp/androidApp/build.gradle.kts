@@ -1,9 +1,26 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("android")
     id("org.jetbrains.kotlin.plugin.compose")
     kotlin("plugin.serialization")
 }
+
+/*
+ * Release signing, when the keystore is present.
+ *
+ * The keystore and its passwords live outside git (see keystore/ in .gitignore) and
+ * are the same ones v0.3.0 shipped with — the certificate has to match, or anyone
+ * already running FilterPod cannot upgrade in place. A checkout without them still
+ * builds: the release type falls back to debug signing, which keeps CI and the
+ * debug-vs-release performance comparison usable.
+ */
+val keystoreProps = Properties().also { props ->
+    val file = rootProject.file("../keystore/keystore.properties")
+    if (file.exists()) file.inputStream().use(props::load)
+}
+val hasReleaseKey: Boolean = keystoreProps.getProperty("storeFile") != null
 
 android {
     namespace = "app.filterpod"
@@ -35,13 +52,24 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = rootProject.file(
+                    "../keystore/" + keystoreProps.getProperty("storeFile")
+                        .removePrefix("../keystore/"),
+                )
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key for now: there is no release keystore in the
-            // repo, and a locally-installable release build is what makes
-            // debug-vs-release performance measurable. Replace before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "debug")
         }
     }
 
