@@ -187,8 +187,8 @@ fun LibraryScreen(nav: NavState) {
             ),
         ) {
             item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
-                Box(Modifier.padding(start = 0.dp)) {
-                    ScreenHeader("Library") {
+                Box {
+                    ScreenHeader("Library", containerInset = 16.dp) {
                         QueueBadgeButton(queue.size) { nav.selectTab(Screen.Queue) }
                     }
                 }

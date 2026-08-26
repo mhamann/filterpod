@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.filterpod.ui.Ember
@@ -65,12 +67,31 @@ fun Artwork(
 
 /** The screens' shared header row: big title on a hairline, optional action. */
 @Composable
-fun ScreenHeader(title: String, action: (@Composable () -> Unit)? = null) {
+fun ScreenHeader(
+    title: String,
+    /**
+     * Horizontal inset the container already applies to this header.
+     *
+     * Headers live inside lists whose contentPadding insets every item, so the header
+     * cannot assume it starts at the screen edge. Told what it is already inset by, it
+     * can put the title at 16dp and the action at the same distance from the edge the
+     * player's header uses — so the queue button does not jump when you open the
+     * player.
+     */
+    containerInset: Dp = 0.dp,
+    action: (@Composable () -> Unit)? = null,
+) {
+    // Where the action's touch target should sit, measured from the screen edge.
+    val actionInset = 8.dp
     Column {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(
+                    start = (16.dp - containerInset).coerceAtLeast(0.dp),
+                    end = (actionInset - containerInset).coerceAtLeast(0.dp),
+                )
+                .padding(vertical = 10.dp),
             // Centre, not bottom: the action is an IconButton with a 48dp touch target
             // and its glyph centred inside, so bottom-aligning the two boxes floated
             // the icon well above the title it sits beside.
@@ -93,7 +114,13 @@ fun ScreenHeader(title: String, action: (@Composable () -> Unit)? = null) {
                     ),
                 ),
             )
-            if (action != null) action()
+            if (action != null) {
+                // When the container insets further than the action wants to be, the
+                // action steps back out toward the edge.
+                Box(Modifier.offset(x = (containerInset - actionInset).coerceAtLeast(0.dp))) {
+                    action()
+                }
+            }
         }
         HairlineDivider()
     }

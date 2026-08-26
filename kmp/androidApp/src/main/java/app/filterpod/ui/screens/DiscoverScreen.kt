@@ -175,7 +175,7 @@ fun DiscoverScreen(nav: NavState, initialTerm: String, discovery: Discovery) {
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
     ) {
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
-            ScreenHeader("Discover")
+            ScreenHeader("Discover", containerInset = 16.dp)
         }
 
         item(key = "search", span = { GridItemSpan(maxLineSpan) }) {
