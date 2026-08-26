@@ -90,7 +90,19 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
     val subscriptions by repo.observeSubscriptions().collectAsState(initial = emptyList())
     val subscription = remember(subscriptions) { subscriptions.firstOrNull { it.podcastId == podcastId } }
 
-    val episodes by repo.observeEpisodes(podcastId, limit = 1000).collectAsState(initial = emptyList())
+    /*
+     * Fetch only the page on screen. This used to pull a thousand episodes to show
+     * thirty, and every row arrived as a JSON document to decode — measured on a
+     * Pixel as the largest remaining source of dropped frames during the show
+     * page's entrance animation.
+     */
+    val episodes by repo.observeEpisodes(podcastId, limit = limit.toLong())
+        .collectAsState(initial = emptyList())
+
+    /** The show's real episode count, counted in SQL rather than inferred from a page. */
+    val totalEpisodes by produceState(0L, podcastId, episodes.size) {
+        value = repo.countEpisodes(podcastId)
+    }
 
     val progressRows by repo.observeProgress().collectAsState(initial = emptyList())
     val progressById = remember(progressRows) { progressRows.associateBy { it.episodeId } }
@@ -109,7 +121,7 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
     }
     val playedCount = episodes.size - unplayed.size
     val visible = if (showPlayed) episodes else unplayed
-    val shown = remember(visible, limit) { visible.take(limit) }
+    val shown = visible
 
     /** Rows opened for full-title/description reading. Tap toggles. Plain remember:
      * a Set is not Bundle-saveable, and expansion is not worth surviving process death. */
@@ -179,7 +191,7 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                                 Modifier.padding(top = 10.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                Pill("${episodes.size} episodes")
+                                Pill("$totalEpisodes episodes")
                                 if (current.explicit) Pill("Explicit feed", tone = PillTone.Ember)
                             }
                         }
@@ -312,7 +324,7 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                 }
             }
 
-            if (shown.size < episodes.size) {
+            if (episodes.size >= limit && limit < totalEpisodes) {
                 item(key = "more") {
                     OutlinedButton(
                         onClick = { limit += PAGE_SIZE },

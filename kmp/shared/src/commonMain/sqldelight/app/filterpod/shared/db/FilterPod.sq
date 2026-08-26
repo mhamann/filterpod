@@ -102,6 +102,9 @@ SELECT COUNT(*) FROM episode WHERE id = ?;
 listEpisodesForPodcast:
 SELECT json FROM episode WHERE podcastId = ? ORDER BY publishedAt DESC LIMIT ?;
 
+countEpisodesForPodcast:
+SELECT COUNT(*) FROM episode WHERE podcastId = ?;
+
 listEpisodeIdsForPodcast:
 SELECT id FROM episode WHERE podcastId = ?;
 

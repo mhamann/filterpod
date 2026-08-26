@@ -148,6 +148,11 @@ class Repo(
         fresh
     }
 
+    /** How many episodes this show has, without decoding a single one of them. */
+    suspend fun countEpisodes(podcastId: String): Long = withContext(io) {
+        q.countEpisodesForPodcast(podcastId).executeAsOne()
+    }
+
     /** Every episode id for a podcast — download cleanup and the subscribe-time count. */
     suspend fun listEpisodeIds(podcastId: String): List<String> = withContext(io) {
         q.listEpisodeIdsForPodcast(podcastId).executeAsList()
