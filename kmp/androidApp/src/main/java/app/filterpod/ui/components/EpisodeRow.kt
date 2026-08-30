@@ -13,9 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -171,10 +169,12 @@ fun EpisodeRow(
                     Text("Play", Modifier.padding(start = 4.dp))
                 }
 
-                // Queueing toggles, and says so by filling in when queued.
+                // Queueing toggles, and says so by filling in when queued. The plus
+                // is the point: a bare list glyph reads as "go to the queue", and
+                // people were not finding the way to put something in it.
                 ToggleIconButton(
                     checked = queued,
-                    icon = Icons.AutoMirrored.Filled.List,
+                    icon = if (queued) FilterPodIcons.PlaylistAddCheck else FilterPodIcons.PlaylistAdd,
                     label = if (queued) "Remove from queue" else "Add to queue",
                     onClick = onToggleQueue,
                 )
@@ -197,7 +197,7 @@ fun EpisodeRow(
                         val app = app.filterpod.FilterPodApp.instance
                         ToggleIconButton(
                             checked = false,
-                            icon = Icons.Filled.KeyboardArrowDown,
+                            icon = FilterPodIcons.Download,
                             label = "Download",
                             onClick = { app.downloader.start(episode.id, episode.audioUrl) },
                         )

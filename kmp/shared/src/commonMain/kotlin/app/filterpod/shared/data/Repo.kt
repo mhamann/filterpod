@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
@@ -186,6 +187,39 @@ class Repo(
     suspend fun listEpisodes(podcastId: String, limit: Long = 200): List<Episode> = withContext(io) {
         q.listEpisodesForPodcast(podcastId, limit).executeAsList()
             .map { json.decodeFromString(Episode.serializer(), it) }
+    }
+
+    /**
+     * Finds episodes of one show by title or description text.
+     *
+     * The search runs against every episode the feed has given us, not the page the
+     * show screen happens to have loaded — finding the one you remember is the whole
+     * point, and it is usually not in the most recent thirty.
+     *
+     * SQL does the narrowing with a LIKE over the stored document, which also matches
+     * audio URLs and ids; the Kotlin pass then keeps only real title/description hits.
+     * The term is JSON-escaped first so it matches the stored form, then LIKE-escaped
+     * so a % or _ in a search is a literal. Case-insensitivity in SQLite's LIKE is
+     * ASCII-only, so the narrowing can miss a query that differs from the text only
+     * by the case of a non-ASCII letter.
+     */
+    suspend fun searchEpisodes(
+        podcastId: String,
+        query: String,
+        limit: Long = 100,
+    ): List<Episode> = withContext(io) {
+        val term = query.trim()
+        if (term.isEmpty()) return@withContext emptyList()
+        val asStored = json.encodeToString(String.serializer(), term).trim('"')
+        val pattern = "%" + asStored.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_") + "%"
+        q.searchEpisodesForPodcast(podcastId, pattern, limit).executeAsList()
+            .map { json.decodeFromString(Episode.serializer(), it) }
+            .filter {
+                it.title.contains(term, ignoreCase = true) ||
+                    it.description.contains(term, ignoreCase = true)
+            }
     }
 
     fun observeEpisodes(podcastId: String, limit: Long = 200): Flow<List<Episode>> =

@@ -1,8 +1,10 @@
 package app.filterpod.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,21 +12,29 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -34,14 +44,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.filterpod.FilterPodApp
+import app.filterpod.shared.model.Episode
 import app.filterpod.shared.model.Podcast
 import app.filterpod.ui.Ember
 import app.filterpod.ui.FeedRefresh
@@ -55,12 +70,19 @@ import app.filterpod.ui.components.Pill
 import app.filterpod.ui.components.PillTone
 import app.filterpod.ui.components.RefreshBox
 import app.filterpod.ui.components.SectionLabel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val PAGE_SIZE = 30
 
 /** How long a feed must fail before the show page says so. One flaky refresh is not news. */
 private const val STALE_FEED_MS = 24 * 60 * 60 * 1000L
+
+/** Shortest term worth searching for: one letter matches most of a feed. */
+private const val MIN_SEARCH_LEN = 2
+
+/** Typing pause before a search runs, so a query is not run per keystroke. */
+private const val SEARCH_DEBOUNCE_MS = 200L
 
 /**
  * The show page: header, subscribe, per-show controls, and the episode list.
@@ -121,8 +143,7 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
         episodes.filter { progressById[it.id]?.played != true || it.id == currentlyPlayingId }
     }
     val playedCount = episodes.size - unplayed.size
-    val visible = if (showPlayed) episodes else unplayed
-    val shown = visible
+    val shown = if (showPlayed) episodes else unplayed
 
     /** Rows opened for full-title/description reading. Tap toggles. Plain remember:
      * a Set is not Bundle-saveable, and expansion is not worth surviving process death. */
@@ -132,6 +153,10 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
     val downloads by repo.observeDownloads().collectAsState(initial = emptyList())
     val downloadsById = remember(downloads) { downloads.associateBy { it.episodeId } }
     val playerState by controller.state.collectAsState()
+
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var searchTerm by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
 
     val current = podcast
     if (current == null) {
@@ -147,11 +172,80 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
         return
     }
 
+    /*
+     * One row, wired the same way wherever it appears — the paged list and the
+     * search results are different ways of choosing which episodes to show, not
+     * different kinds of episode.
+     */
+    val episodeRow: @Composable (Episode) -> Unit = { episode ->
+        EpisodeRow(
+            episode = episode,
+            progress = progressById[episode.id],
+            queued = episode.id in queuedIds,
+            isCurrent = playerState.episode?.id == episode.id,
+            download = downloadsById[episode.id],
+            onPlay = { controller.openAsync(episode.id) },
+            onToggleQueue = {
+                scope.launch {
+                    if (episode.id in queuedIds) repo.removeFromQueue(episode.id)
+                    else repo.enqueueEpisode(episode.id, now = System.currentTimeMillis())
+                }
+            },
+            onTogglePlayed = {
+                scope.launch {
+                    val next = progressById[episode.id]?.played != true
+                    repo.setPlayed(episode.id, next, now = System.currentTimeMillis())
+                    // Marking done is finishing by decree; it leaves the
+                    // queue the same way a finished episode does.
+                    if (next) repo.removeFromQueue(episode.id)
+                }
+            },
+            expanded = episode.id in expandedIds,
+            onToggleExpand = {
+                expandedIds =
+                    if (episode.id in expandedIds) expandedIds - episode.id
+                    else expandedIds + episode.id
+            },
+        )
+    }
+
+    if (searching) {
+        EpisodeSearch(
+            podcastId = podcastId,
+            term = searchTerm,
+            onTermChange = { searchTerm = it },
+            onDismiss = { searching = false },
+            episodeRow = episodeRow,
+        )
+        return
+    }
+
+    /*
+     * Pull the next page as the list runs out, rather than making the reader find and
+     * press a button to keep reading. The condition also fires when everything loaded
+     * fits on screen without scrolling — which is what happens when a whole page turns
+     * out to be played episodes and the list hides them all.
+     */
+    LaunchedEffect(listState, podcastId) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            (info.visibleItemsInfo.lastOrNull()?.index ?: -1) to info.totalItemsCount
+        }.collect { (lastVisible, count) ->
+            // episodes.size >= limit means the current page really is full, so there
+            // is a next one; without it a short feed would page forever.
+            if (count > 0 && lastVisible >= count - 3 &&
+                episodes.size >= limit && limit < totalEpisodes
+            ) {
+                limit += PAGE_SIZE
+            }
+        }
+    }
+
     RefreshBox(onRefresh = {
         manualError = FeedRefresh.refresh(repo, app.http, current)
         podcastTick++
     }) {
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState) {
             item(key = "topbar") {
                 Column {
                     Row(
@@ -164,6 +258,9 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                         }
                         SectionLabel(current.author, Modifier.weight(1f))
+                        IconButton(onClick = { searching = true }) {
+                            Icon(Icons.Filled.Search, "Search episodes")
+                        }
                         // A gear that lands on a real screen, not a menu whose only
                         // item was Filtering.
                         IconButton(onClick = { nav.push(Screen.PodcastSettings(podcastId)) }) {
@@ -290,54 +387,144 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
             }
 
             items(count = shown.size, key = { shown[it].id }) { index ->
-                val episode = shown[index]
                 Column {
-                    EpisodeRow(
-                        episode = episode,
-                        progress = progressById[episode.id],
-                        queued = episode.id in queuedIds,
-                        isCurrent = playerState.episode?.id == episode.id,
-                        download = downloadsById[episode.id],
-                        onPlay = { controller.openAsync(episode.id) },
-                        onToggleQueue = {
-                            scope.launch {
-                                if (episode.id in queuedIds) repo.removeFromQueue(episode.id)
-                                else repo.enqueueEpisode(episode.id, now = System.currentTimeMillis())
-                            }
-                        },
-                        onTogglePlayed = {
-                            scope.launch {
-                                val next = progressById[episode.id]?.played != true
-                                repo.setPlayed(episode.id, next, now = System.currentTimeMillis())
-                                // Marking done is finishing by decree; it leaves the
-                                // queue the same way a finished episode does.
-                                if (next) repo.removeFromQueue(episode.id)
-                            }
-                        },
-                        expanded = episode.id in expandedIds,
-                        onToggleExpand = {
-                            expandedIds =
-                                if (episode.id in expandedIds) expandedIds - episode.id
-                                else expandedIds + episode.id
-                        },
-                    )
+                    episodeRow(shown[index])
                     HairlineDivider()
                 }
             }
 
-            if (episodes.size >= limit && limit < totalEpisodes) {
+            if (limit < totalEpisodes) {
                 item(key = "more") {
-                    OutlinedButton(
-                        onClick = { limit += PAGE_SIZE },
-                        modifier = Modifier
+                    Row(
+                        Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                    ) { Text("Show more") }
+                            .padding(20.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            Modifier.size(18.dp),
+                            color = Ember,
+                            strokeWidth = 2.dp,
+                        )
+                    }
                 }
             }
         }
     }
+}
 
+/**
+ * Finding one episode in a show that has hundreds.
+ *
+ * A mode rather than a filter over the loaded page: the search runs against every
+ * episode the feed has given us, and the episode being looked for is usually older
+ * than anything the list has paged in. Played episodes are not hidden here — if you
+ * are searching for something, having heard it before is not a reason to withhold it.
+ */
+@Composable
+private fun EpisodeSearch(
+    podcastId: String,
+    term: String,
+    onTermChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    episodeRow: @Composable (Episode) -> Unit,
+) {
+    val repo = FilterPodApp.instance.repo
+    val focusRequester = remember { FocusRequester() }
+    val trimmed = term.trim()
+
+    BackHandler { onDismiss() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    // produceState cancels the previous run when the term changes, so the leading
+    // delay debounces typing without a flow of its own. null means "not searched yet".
+    val results by produceState<List<Episode>?>(null, podcastId, trimmed) {
+        if (trimmed.length < MIN_SEARCH_LEN) {
+            value = null
+            return@produceState
+        }
+        delay(SEARCH_DEBOUNCE_MS)
+        value = repo.searchEpisodes(podcastId, trimmed)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close search")
+            }
+            OutlinedTextField(
+                value = term,
+                onValueChange = onTermChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
+                placeholder = { Text("Search this show's episodes") },
+                trailingIcon = {
+                    if (term.isNotEmpty()) {
+                        IconButton(onClick = { onTermChange("") }) {
+                            Icon(Icons.Filled.Close, "Clear search", Modifier.size(16.dp))
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(50),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Ember.copy(alpha = 0.5f),
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                ),
+            )
+        }
+        HairlineDivider()
+
+        val found = results
+        when {
+            trimmed.length < MIN_SEARCH_LEN -> SearchNote("Type to search titles and show notes.")
+            found == null -> Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(Modifier.size(20.dp), color = Ember, strokeWidth = 2.dp)
+            }
+            found.isEmpty() -> SearchNote("No episodes match “$trimmed”.")
+            else -> LazyColumn(Modifier.fillMaxSize()) {
+                item(key = "count") {
+                    Text(
+                        if (found.size == 1) "1 episode" else "${found.size} episodes",
+                        Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                items(count = found.size, key = { found[it].id }) { index ->
+                    Column {
+                        episodeRow(found[index])
+                        HairlineDivider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchNote(text: String) {
+    Text(
+        text,
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 40.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @Composable
@@ -380,6 +567,3 @@ private fun Description(text: String) {
         }
     }
 }
-
-
-

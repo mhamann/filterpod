@@ -55,6 +55,7 @@ import app.filterpod.shared.model.Episode
 import app.filterpod.ui.Ember
 import app.filterpod.ui.NavState
 import app.filterpod.ui.components.EmptyState
+import app.filterpod.ui.components.FilterPodIcons
 import app.filterpod.ui.components.ScreenHeader
 import app.filterpod.ui.durationLabel
 import kotlinx.coroutines.launch
@@ -103,7 +104,7 @@ fun QueueScreen(nav: NavState) {
 
         if (queue.isEmpty()) {
             EmptyState(
-                icon = Icons.AutoMirrored.Filled.List,
+                icon = FilterPodIcons.PlaylistAdd,
                 title = "Nothing queued yet.",
                 body = "Use the queue button on any episode to line it up. Whatever is playing sits at the top, and the rest follow it in order.",
             )

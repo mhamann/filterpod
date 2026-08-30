@@ -150,4 +150,41 @@ class RepoTest {
         assertEquals(1.2, decoded.playbackRate)
         assertEquals("base.en", decoded.whisperModel)
     }
+
+    @Test
+    fun searchFindsEpisodesByTitleAndNotes() = runTest {
+        val repo = repo()
+        fun ep(n: Int, title: String, description: String = "", audio: String = "$n.mp3") = Episode(
+            id = "e_$n", podcastId = "p_1", guid = "g_$n", title = title,
+            description = description, audioUrl = "https://example.com/$audio",
+            publishedAt = n.toLong(),
+        )
+        repo.upsertEpisodes(
+            listOf(
+                ep(1, "The Kingdom Come"),
+                ep(2, "Unashamed Truth", "A conversation about kingdom work"),
+                ep(3, "Something else entirely", audio = "kingdom-notes.mp3"),
+                ep(4, "100% certain", "a_b discount"),
+                ep(5, "He said \"hello\" plainly"),
+            ),
+        )
+
+        // Case-insensitive, across title and description.
+        assertEquals(
+            listOf("e_2", "e_1"),
+            repo.searchEpisodes("p_1", "kingdom").map { it.id },
+        )
+        // e_3 only has "kingdom" in its audio URL: SQL narrows it in, the filter drops it.
+        assertTrue(repo.searchEpisodes("p_1", "kingdom-notes").isEmpty())
+        // Newest first, like the list it replaces.
+        assertEquals(listOf("e_2"), repo.searchEpisodes("p_1", "unashamed").map { it.id })
+        // LIKE wildcards in the query are literals, not patterns.
+        assertEquals(listOf("e_4"), repo.searchEpisodes("p_1", "100%").map { it.id })
+        assertEquals(listOf("e_4"), repo.searchEpisodes("p_1", "a_b").map { it.id })
+        assertTrue(repo.searchEpisodes("p_1", "%%%").isEmpty())
+        // A quote survives JSON escaping on the way into the LIKE.
+        assertEquals(listOf("e_5"), repo.searchEpisodes("p_1", "\"hello\"").map { it.id })
+        // Another show's episodes stay out of it.
+        assertTrue(repo.searchEpisodes("p_2", "kingdom").isEmpty())
+    }
 }

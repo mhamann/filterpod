@@ -105,6 +105,14 @@ SELECT json FROM episode WHERE podcastId = ? ORDER BY publishedAt DESC LIMIT ?;
 countEpisodesForPodcast:
 SELECT COUNT(*) FROM episode WHERE podcastId = ?;
 
+-- Narrows a show's episodes to those whose stored document contains the term, so a
+-- search over a thousand-episode feed only decodes the handful that could match.
+-- Deliberately a superset: the caller decides which fields actually count.
+searchEpisodesForPodcast:
+SELECT json FROM episode
+WHERE podcastId = ? AND json LIKE ? ESCAPE '\'
+ORDER BY publishedAt DESC LIMIT ?;
+
 listEpisodeIdsForPodcast:
 SELECT id FROM episode WHERE podcastId = ?;
 
