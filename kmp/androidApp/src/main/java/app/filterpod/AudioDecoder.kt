@@ -75,6 +75,17 @@ object AudioDecoder {
     ): FloatArray = decodeWindowAligned(source, source.size, label, startSec, endSec)
 
     /**
+     * The byte the MP3 map picks for [sec], and the second it reads back for that byte.
+     * Null when the file yields no map at all — which is the state that silently
+     * disabled alignment and let a flagged word play. Test seam only.
+     */
+    internal fun mp3MapProbe(source: MediaDataSource, sizeBytes: Long, sec: Double): Pair<Long, Double>? {
+        val map = Mp3Map.parse(source, sizeBytes) ?: return null
+        val byte = map.byteAt(sec)
+        return byte to map.secAt(byte)
+    }
+
+    /**
      * Window decode with sample-accurate alignment for MP3.
      *
      * MediaExtractor seeks MP3 by byte estimation and ignores the Xing/Info header, so
@@ -101,6 +112,15 @@ object AudioDecoder {
         val to = min(endSec ?: (from + MAX_WINDOW_SEC), from + MAX_WINDOW_SEC)
 
         val map = if (sizeBytes > 0) Mp3Map.parse(source, sizeBytes) else null
+        /*
+         * Whether alignment is actually on. Without this the fallback is invisible:
+         * the analyzer still returns spans, they are just timed against audio that
+         * began somewhere else, and the only symptom is a flagged word playing.
+         */
+        Log.i(
+            "FilterPod",
+            "decode $label [$from..$to] map=${if (map == null) "NONE (estimated seek)" else "ok"} size=$sizeBytes",
+        )
         if (map == null || from < SLICE_SLACK_SEC) {
             // Not MP3, unparseable, or a window at the very start (where estimated
             // seeking cannot be far off because there is nowhere to drift to).
@@ -114,6 +134,11 @@ object AudioDecoder {
         // The exact second the slice begins at, from the same map that chose the byte.
         val sliceStartSec = map.secAt(sliceStartByte)
 
+        Log.i(
+            "FilterPod",
+            "decode $label slice byte=$sliceStartByte sec=$sliceStartSec " +
+                "-> local [${from - sliceStartSec}..${to - sliceStartSec}]",
+        )
         val extractor = MediaExtractor()
         extractor.setDataSource(SlicedSource(source, sliceStartByte, sliceEndByte - sliceStartByte))
         return decodeWindow(extractor, label, from - sliceStartSec, to - sliceStartSec)
@@ -273,28 +298,43 @@ object AudioDecoder {
             private val MPEG1_RATES = intArrayOf(44100, 48000, 32000)
 
             fun parse(source: MediaDataSource, sizeBytes: Long): Mp3Map? {
-                val head = ByteArray(256 * 1024)
-                val read = source.readAt(0, head, 0, head.size)
-                if (read < 128) return null
+                val tagHeader = ByteArray(10)
+                if (fill(source, 0, tagHeader) < 10) return null
 
                 // Skip an ID3v2 tag: 'ID3' + version + flags + syncsafe size.
-                var offset = 0
-                if (head[0] == 'I'.code.toByte() && head[1] == 'D'.code.toByte() &&
-                    head[2] == '3'.code.toByte()
+                var tagBytes = 0L
+                if (tagHeader[0] == 'I'.code.toByte() && tagHeader[1] == 'D'.code.toByte() &&
+                    tagHeader[2] == '3'.code.toByte()
                 ) {
-                    val size = ((head[6].toInt() and 0x7f) shl 21) or
-                        ((head[7].toInt() and 0x7f) shl 14) or
-                        ((head[8].toInt() and 0x7f) shl 7) or
-                        (head[9].toInt() and 0x7f)
-                    offset = 10 + size
+                    val size = ((tagHeader[6].toInt() and 0x7f) shl 21) or
+                        ((tagHeader[7].toInt() and 0x7f) shl 14) or
+                        ((tagHeader[8].toInt() and 0x7f) shl 7) or
+                        (tagHeader[9].toInt() and 0x7f)
+                    tagBytes = 10L + size
                 }
-                if (offset >= read - 4) return null
+                if (tagBytes >= sizeBytes - 4) return null
+
+                /*
+                 * Read the scan window at the tag's end rather than from byte zero.
+                 *
+                 * This used to read a fixed 256KB from the start and require the first
+                 * audio frame to fall inside it. An ID3 tag holding cover art is
+                 * routinely larger than that — the episode that exposed this carried a
+                 * 498KB tag — so the scan never reached the audio, parse returned null,
+                 * and the whole byte-accurate path silently fell back to
+                 * MediaExtractor's estimated seeking. That put the analyzer about two
+                 * seconds off the player, which is enough for a flagged word to be
+                 * outside the span cut for it.
+                 */
+                val head = ByteArray(64 * 1024)
+                val read = fill(source, tagBytes, head)
+                if (read < 128) return null
 
                 // Find the first real frame header, verified by a second frame where the
                 // first says it should be — a lone sync pattern happens by chance in tags.
                 var frameStart = -1
-                var i = offset
-                while (i < min(read - 4, offset + 64 * 1024)) {
+                var i = 0
+                while (i < read - 4) {
                     val header = frameHeaderAt(head, i)
                     if (header != null) {
                         val next = i + header.frameLength
@@ -308,28 +348,62 @@ object AudioDecoder {
                 if (frameStart < 0) return null
                 val frame = frameHeaderAt(head, frameStart)!!
 
+                // Absolute position of the first audio frame in the file.
+                val musicStart = tagBytes + frameStart
+
                 // Xing/Info sits after the side info of that first frame.
                 val tagOffset = frameStart + 4 + frame.sideInfoBytes
-                if (tagOffset + 16 > read) return null
-                val tag = String(head, tagOffset, 4, Charsets.US_ASCII)
-                if (tag != "Xing" && tag != "Info") return null
+                val hasVbrHeader = tagOffset + 16 <= read &&
+                    String(head, tagOffset, 4, Charsets.US_ASCII).let { it == "Xing" || it == "Info" }
 
-                val flags = beInt(head, tagOffset + 4)
-                var cursor = tagOffset + 8
-                var frames = -1L
-                var bytes = -1L
-                if (flags and 1 != 0) {
-                    frames = beInt(head, cursor).toLong(); cursor += 4
+                if (hasVbrHeader) {
+                    val flags = beInt(head, tagOffset + 4)
+                    var cursor = tagOffset + 8
+                    var frames = -1L
+                    var bytes = -1L
+                    if (flags and 1 != 0) {
+                        frames = beInt(head, cursor).toLong(); cursor += 4
+                    }
+                    if (flags and 2 != 0) {
+                        bytes = beInt(head, cursor).toLong()
+                    }
+                    if (frames > 0) {
+                        val durationSec =
+                            frames * frame.samplesPerFrame.toDouble() / frame.sampleRate
+                        if (durationSec >= 1) {
+                            val musicBytes = if (bytes > 0) bytes else sizeBytes - musicStart
+                            return Mp3Map(musicStart, musicBytes, durationSec)
+                        }
+                    }
                 }
-                if (flags and 2 != 0) {
-                    bytes = beInt(head, cursor).toLong()
-                }
-                if (frames <= 0) return null
 
-                val durationSec = frames * frame.samplesPerFrame.toDouble() / frame.sampleRate
+                /*
+                 * No usable VBR header: treat the file as constant bitrate, which is
+                 * what the frame we just read declares.
+                 *
+                 * Returning null here instead was the second half of the same bug. A
+                 * plain CBR file is the case a linear byte/time map describes exactly,
+                 * and giving up on it handed the decode back to the estimating path for
+                 * no reason. A VBR file essentially always carries a Xing or Info
+                 * header, so the files that reach this line are the ones it fits.
+                 */
+                if (frame.bitrate <= 0) return null
+                val bytesPerSec = frame.bitrate / 8.0
+                val musicBytes = sizeBytes - musicStart
+                val durationSec = musicBytes / bytesPerSec
                 if (durationSec < 1) return null
-                val musicBytes = if (bytes > 0) bytes else sizeBytes - frameStart
-                return Mp3Map(frameStart.toLong(), musicBytes, durationSec)
+                return Mp3Map(musicStart, musicBytes, durationSec)
+            }
+
+            /** Reads until [into] is full or the source ends; readAt may return short. */
+            private fun fill(source: MediaDataSource, position: Long, into: ByteArray): Int {
+                var got = 0
+                while (got < into.size) {
+                    val n = source.readAt(position + got, into, got, into.size - got)
+                    if (n <= 0) break
+                    got += n
+                }
+                return got
             }
 
             private fun beInt(data: ByteArray, at: Int): Int =
@@ -343,6 +417,8 @@ object AudioDecoder {
                 val samplesPerFrame: Int,
                 val sampleRate: Int,
                 val sideInfoBytes: Int,
+                /** Bits per second this frame declares — constant across a CBR file. */
+                val bitrate: Int,
             )
 
             private fun frameHeaderAt(data: ByteArray, at: Int): FrameHeader? {
@@ -380,7 +456,7 @@ object AudioDecoder {
                     mono -> 9
                     else -> 17
                 }
-                return FrameHeader(frameLength, samplesPerFrame, sampleRate, sideInfoBytes)
+                return FrameHeader(frameLength, samplesPerFrame, sampleRate, sideInfoBytes, bitrate)
             }
         }
     }

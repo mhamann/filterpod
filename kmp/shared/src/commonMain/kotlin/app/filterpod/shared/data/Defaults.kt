@@ -69,6 +69,11 @@ val DEFAULT_SETTINGS = Settings()
 /**
  * Bumping either constant invalidates existing filter maps so they regenerate.
  * Values match the TypeScript app: maps imported at cutover must stay valid.
+ *
+ * 4: every map before this one was timed against a decode that could start seconds
+ * away from where it claimed. Their spans point at the wrong audio — the word plays
+ * and clean speech just after it is cut instead — so they cannot be trusted as a head
+ * start, however complete they look.
  */
-const val ENGINE_VERSION = "3"
+const val ENGINE_VERSION = "4"
 const val WORDLIST_VERSION = "1"

@@ -90,6 +90,12 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        // AudioDecoder's MP3 map is plain arithmetic over a MediaDataSource; the test
+        // subclasses that and never calls a framework method, but the stub jar throws
+        // from the constructor unless unmocked calls return defaults.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -116,4 +122,6 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+
+    testImplementation(kotlin("test"))
 }
