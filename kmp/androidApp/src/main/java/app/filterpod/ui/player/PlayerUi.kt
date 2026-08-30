@@ -570,9 +570,14 @@ private fun SkipButton(seconds: Int, forward: Boolean, onClick: () -> Unit) {
              * A filled triangle at the gap, pointing the way the audio moves: left to
              * rewind, right to advance. Horizontal rather than tangent to the arc —
              * at this size a tangent head reads as pointing up, which is what made
-             * the previous version ambiguous.
+             * an earlier version ambiguous.
+             *
+             * It caps the end of the stroke and points back across the gap, so the
+             * forward head sits at the gap's left edge and the rewind head at its
+             * right. Putting each head at its own side instead left it pointing away
+             * from the ring, floating outside the arc rather than finishing it.
              */
-            val angle = Math.toRadians(if (forward) -57.5 else -122.5)
+            val angle = Math.toRadians(if (forward) -122.5 else -57.5)
             val r = arcSize.width / 2f
             val tipX = size.width / 2f + r * kotlin.math.cos(angle).toFloat()
             val tipY = size.height / 2f + r * kotlin.math.sin(angle).toFloat()
