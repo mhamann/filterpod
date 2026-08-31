@@ -41,6 +41,32 @@ data class FilterSpan(
     }
 }
 
+/**
+ * The span a playhead at [positionMs] should skip, deciding [lookaheadMs] ahead.
+ *
+ * A span the playhead is already inside wins — that is a seek landing in the middle of
+ * one, where cutting late still beats not cutting. Otherwise it is the next span
+ * beginning anywhere within the lookahead window.
+ *
+ * Asking instead whether one span covers the point [lookaheadMs] ahead looks equivalent
+ * and is not: a span shorter than the lookahead fits between the playhead and that
+ * point, so the probe steps clean over it and the word plays until the playhead reaches
+ * it. Spans run well under a second and the lookahead is most of one, so that is the
+ * ordinary case, not an edge.
+ */
+fun List<FilterSpan>.spanToSkip(positionMs: Long, lookaheadMs: Long): FilterSpan? {
+    spanAt(positionMs)?.let { return it }
+    // First span starting at or after the playhead; the list is sorted by start.
+    var lo = 0
+    var hi = size
+    while (lo < hi) {
+        val mid = (lo + hi) ushr 1
+        if (this[mid].startMs < positionMs) lo = mid + 1 else hi = mid
+    }
+    val next = getOrNull(lo) ?: return null
+    return if (next.startMs <= positionMs + lookaheadMs) next else null
+}
+
 /** Binary search for the span containing [positionMs], or null. */
 fun List<FilterSpan>.spanAt(positionMs: Long): FilterSpan? {
     var lo = 0

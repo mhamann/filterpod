@@ -355,16 +355,47 @@ class PlaybackService : MediaSessionService() {
         // — and, over Bluetooth, already sitting in the headset — cannot be recalled, so
         // a skip decided the instant the span is entered is heard anyway. This was the
         // difference between cutting a word and cutting the tail of one.
-        val span = spans.spanAt(position + SKIP_LOOKAHEAD_MS) ?: return
+        val lookahead = skipLookaheadMs()
+        val span = spans.spanToSkip(position, lookahead) ?: return
 
         skippedMs += span.endMs - position
         exo.seekTo(span.endMs)
         android.util.Log.i(
             "FilterPod",
             "skip ${span.startMs}-${span.endMs}ms (${span.severity}) " +
-                "decided at ${position}ms, ${span.startMs - position}ms early",
+                "decided at ${position}ms, ${span.startMs - position}ms early " +
+                "(lookahead ${lookahead}ms)",
         )
         listener?.onSkip(span)
+    }
+
+    /**
+     * The lookahead for the current output route.
+     *
+     * Recomputed at most once a second rather than on every 20ms tick: it queries the
+     * audio service, and the answer only changes when someone connects or disconnects a
+     * headset. A Bluetooth output that is merely connected counts as the route, which
+     * overestimates while playing to the speaker with a headset idle nearby — the cost
+     * of being wrong that way is a slightly earlier cut, and of being wrong the other
+     * way is the word.
+     */
+    private var lookaheadCache: Pair<Long, Long>? = null
+
+    private fun skipLookaheadMs(): Long {
+        val now = android.os.SystemClock.elapsedRealtime()
+        lookaheadCache?.let { (at, value) -> if (now - at < 1_000) return value }
+        val bluetooth = runCatching {
+            val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            audio.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).any {
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER
+            }
+        }.getOrDefault(false)
+        val value = if (bluetooth) SKIP_LOOKAHEAD_BLUETOOTH_MS else SKIP_LOOKAHEAD_MS
+        lookaheadCache = now to value
+        return value
     }
 
     /** Set while playback is paused by [holdAtFrontier]; cleared by any human action. */
@@ -873,16 +904,25 @@ class PlaybackService : MediaSessionService() {
         const val TICK_MS = 20L
 
         /**
-         * How far in front of the playhead a skip is decided.
+         * How far in front of the playhead a skip is decided, playing to a local output.
          *
-         * Covers the audio that is already past the point of recall when `seekTo` runs:
-         * the platform mixer and HAL buffers, and over A2DP the headset's own buffer,
-         * which together run to a couple of hundred milliseconds. Too small and the start
-         * of a flagged word is audible before the cut lands — the bug this fixes. Too
-         * large and the cut eats into the word before it, so this deliberately errs only
-         * slightly past typical wired latency.
+         * Covers the audio already past the point of recall when `seekTo` runs: the
+         * platform mixer and HAL buffers hold sound that has been handed over and cannot
+         * be taken back. 250ms was not enough — the first consonant of a flagged word was
+         * audible before the cut landed — and the cost of the extra is only that the cut
+         * begins a little earlier in the gap ahead of the word.
          */
-        private const val SKIP_LOOKAHEAD_MS = 250L
+        private const val SKIP_LOOKAHEAD_MS = 400L
+
+        /**
+         * The same, with a Bluetooth headset connected.
+         *
+         * A2DP adds the receiver's own jitter buffer to everything the phone already
+         * holds, and nothing on this side can flush it — those samples are in the
+         * headset. It runs to a couple of hundred milliseconds beyond a wired route, and
+         * is why a cut that is clean on the speaker can leak in the car.
+         */
+        private const val SKIP_LOOKAHEAD_BLUETOOTH_MS = 700L
 
         /** Status updates to the WebView. The UI shows whole seconds. */
         private const val STATUS_INTERVAL_MS = 200L
