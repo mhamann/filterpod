@@ -348,8 +348,8 @@ class PlaybackController(
          * checked rather than the row believed.
          */
         val localAudio = download?.let { java.io.File(context.filesDir, "filterpod/${it.fileKey}") }
-        val hasLocalAudio = download?.state == DownloadState.DOWNLOADED &&
-            localAudio != null && localAudio.length() > 0
+        val localIdentity = localAudio?.let { StreamPin.localIdentity(it) }
+        val hasLocalAudio = download?.state == DownloadState.DOWNLOADED && localIdentity != null
         if (download?.state == DownloadState.DOWNLOADED && !hasLocalAudio) {
             android.util.Log.i("FilterPod", "download for $episodeId is gone; streaming instead")
             repo.patchDownload(episodeId) { it.copy(state = DownloadState.FAILED, error = "file missing") }
@@ -359,8 +359,7 @@ class PlaybackController(
         else StreamPin.forEpisode(context, episodeId, episode.audioUrl)
         // What the spans about to be written are timed against: the file itself when
         // there is one, otherwise the assembled copy just pinned.
-        currentAudioIdentity =
-            if (hasLocalAudio) "file${localAudio!!.length()}" else currentPin?.identity
+        currentAudioIdentity = localIdentity.takeIf { hasLocalAudio } ?: currentPin?.identity
 
         // The playhead's pipeline owns the transcriber; a background prefilter build
         // in flight yields now rather than making the lead-in queue behind it.
@@ -566,6 +565,10 @@ class PlaybackController(
                 engineVersion = ENGINE_VERSION,
                 wordlistVersion = WORDLIST_VERSION,
                 profileId = profileId,
+                // Recorded for the same reason as an analysed map, though a publisher
+                // transcript is timed against the unstitched content rather than any
+                // assembled copy — a separate hazard on ad-inserted feeds.
+                audioIdentity = currentAudioIdentity,
                 progress = 1.0,
                 createdAt = existing?.createdAt ?: System.currentTimeMillis(),
                 skippedSec = seed.spans.sumOf { it.endSec - it.startSec },

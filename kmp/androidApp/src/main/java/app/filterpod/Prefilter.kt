@@ -81,14 +81,33 @@ class Prefilter(
         val profile = repo.getProfileForPodcast(episode.podcastId)
         if (profile.severities.isEmpty()) return
 
+        val fileKey = "audio/$episodeId"
+        /*
+         * Which copy this episode is, before a word of it is read.
+         *
+         * Without this the prefilter analysed whatever the feed URL returned per window,
+         * and for an ad-supported show that is assembled per request — so a single map
+         * could be built across several differently stitched copies, and then never
+         * checked against the one that plays. Same rule as the live path: the file when
+         * there is one, otherwise the copy at the end of the redirect chain.
+         */
+        val local = java.io.File(context.filesDir, "filterpod/$fileKey")
+        val localIdentity = StreamPin.localIdentity(local)
+        val pin = if (localIdentity != null) null
+        else StreamPin.forEpisode(context, episodeId, episode.audioUrl)
+        val audioIdentity = localIdentity ?: pin?.identity
+        val readUrl = pin?.url ?: episode.audioUrl
+        val cacheKey = pin?.cacheKey(episodeId)
+
         // Already current — engine, wordlist and profile all match — means nothing to do.
-        val existing = repo.getValidFilterMap(episodeId, profile.id)
+        val stored = repo.getValidFilterMap(episodeId, profile.id)
+        // Work timed against a copy that is no longer this one is not a head start.
+        val existing = if (StreamPin.isStale(stored?.audioIdentity, audioIdentity)) null else stored
         if (existing?.status == FilterMapStatus.READY) return
 
         val overrides = repo.listWordOverrides()
         val compiled = compileWordlist(profile, overrides).toMatcher()
         val model = repo.getSettings().whisperModel
-        val fileKey = "audio/$episodeId"
 
         val declared = (episode.durationSec ?: 0).toDouble()
         // Feeds lie about duration; leave slack past the declared end so the real tail
@@ -108,7 +127,7 @@ class Prefilter(
             }
             val end = minOf(limit, start + WINDOW_SEC)
             val words = TranscriptionCore.transcribeWindow(
-                context, fileKey, episode.audioUrl, model, start, end,
+                context, fileKey, readUrl, model, start, end, cacheKey,
             )
             val matches = WordMatcher.matchWords(SpanMath.sortAndDedupe(words), compiled)
             spans = SpanMath.normalizeSpans(
@@ -119,14 +138,14 @@ class Prefilter(
                 profile.mergeGapSec,
             )
             ranges = SpanMath.mergeRanges(ranges + listOf(Range(start, end)))
-            persist(episodeId, profile.id, spans, ranges, declared, done = false)
+            persist(episodeId, profile.id, spans, ranges, declared, audioIdentity, done = false)
 
             // Past the declared end, an empty window means the audio really is over.
             if (start >= declared && words.isEmpty()) break
             start = end
         }
 
-        persist(episodeId, profile.id, spans, ranges, declared, done = true)
+        persist(episodeId, profile.id, spans, ranges, declared, audioIdentity, done = true)
     }
 
     private suspend fun persist(
@@ -135,6 +154,7 @@ class Prefilter(
         spans: List<EngineSpan>,
         ranges: List<Range>,
         durationSec: Double,
+        audioIdentity: String?,
         done: Boolean,
     ) {
         val existing = repo.getFilterMap(episodeId)
@@ -148,6 +168,7 @@ class Prefilter(
                 engineVersion = ENGINE_VERSION,
                 wordlistVersion = WORDLIST_VERSION,
                 profileId = profileId,
+                audioIdentity = audioIdentity,
                 progress = if (durationSec > 0) minOf(1.0, SpanMath.analyzedSec(ranges) / durationSec) else 0.0,
                 createdAt = existing?.createdAt ?: System.currentTimeMillis(),
                 skippedSec = SpanMath.totalSkippedSec(spans),

@@ -54,6 +54,14 @@ object StreamPin {
     fun isStale(mapIdentity: String?, pinIdentity: String?): Boolean =
         mapIdentity != null && pinIdentity != null && mapIdentity != pinIdentity
 
+    /**
+     * Identity of a downloaded copy: its size on disk. Null when the file is not there,
+     * which includes a download row that still claims DOWNLOADED over a file that has
+     * been cleaned up underneath it.
+     */
+    fun localIdentity(file: java.io.File): String? =
+        file.length().takeIf { it > 0 }?.let { "file$it" }
+
     private const val PREFS = "stream-pins"
     private const val MAX_REDIRECTS = 6
 
