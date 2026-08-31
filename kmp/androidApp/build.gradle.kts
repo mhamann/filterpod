@@ -33,6 +33,7 @@ android {
         // Succeeds the Capacitor app's versionCode 3; the cutover was an upgrade.
         versionCode = 5
         versionName = "1.0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
             // arm64 only, matching the Capacitor app: building whisper.cpp four
@@ -124,4 +125,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     testImplementation(kotlin("test"))
+
+    // Decoder alignment can only be measured where MediaExtractor and MediaCodec are.
+    // EMULATOR ONLY: the connectedAndroidTest task uninstalls the app when it finishes,
+    // which deletes its data. Never point it at a device holding a real library.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
