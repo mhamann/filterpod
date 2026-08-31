@@ -338,7 +338,7 @@ class PlaybackService : MediaSessionService() {
         }
         pendingLoad?.let { request ->
             pendingLoad = null
-            load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs, request.episodeId)
+            load(request.url, request.title, request.artist, request.artworkUrl, request.startAtMs, request.episodeId, request.cacheKey)
         }
         if (pendingPlay) {
             pendingPlay = false
@@ -465,7 +465,7 @@ class PlaybackService : MediaSessionService() {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else handler.post { block() }
     }
 
-    fun load(url: String, title: String, artist: String, artworkUrl: String?, startAtMs: Long, episodeId: String? = null) = onMain {
+    fun load(url: String, title: String, artist: String, artworkUrl: String?, startAtMs: Long, episodeId: String? = null, cacheKey: String? = null) = onMain {
         val exo = player ?: return@onMain
         skippedMs = 0
         pausedAtMs = 0
@@ -491,7 +491,11 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         exo.setMediaItem(
-            MediaItem.Builder().setUri(url).setMediaMetadata(metadata).build()
+            MediaItem.Builder().setUri(url).setMediaMetadata(metadata)
+                // Cache entries are keyed by which assembled copy this is, so a later
+                // copy's bytes can never be spliced into this one's.
+                .setCustomCacheKey(cacheKey)
+                .build()
         )
         exo.prepare()
         if (startAtMs > 0) exo.seekTo(startAtMs)
@@ -919,6 +923,7 @@ class PlaybackService : MediaSessionService() {
             val artworkUrl: String?,
             val startAtMs: Long,
             val episodeId: String? = null,
+            val cacheKey: String? = null,
         )
 
         @Volatile

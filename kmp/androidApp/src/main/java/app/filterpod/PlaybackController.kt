@@ -7,6 +7,7 @@ import app.filterpod.shared.data.Repo
 import app.filterpod.shared.data.WORDLIST_VERSION
 import app.filterpod.shared.filter.compileWordlist
 import app.filterpod.shared.model.AnalyzedRange
+import app.filterpod.shared.model.DownloadState
 import app.filterpod.shared.model.Episode
 import app.filterpod.shared.model.FilterMap
 import app.filterpod.shared.model.FilterMapStatus
@@ -330,6 +331,37 @@ class PlaybackController(
             loaded = false,
         )
 
+        /*
+         * Establish which copy of the audio this is, before anything reads it.
+         *
+         * A streamed enclosure for an ad-supported show is assembled per request, so the
+         * feed URL does not identify audio — it identifies a recipe. Resolving the
+         * redirect chain once and reading only the URL at the end of it means the player
+         * and the analyzer see the same assembled copy, which is the whole basis for a
+         * span timed by one being valid for the other.
+         *
+         * A download is already one copy, so it needs no pin — but only if it is still
+         * there. A row can say DOWNLOADED while the file has been cleaned up underneath
+         * it, and then playback quietly streams a freshly assembled copy while the map
+         * still holds spans timed against the file that is gone. That is exactly how a
+         * flagged word ends up playing with a cut recorded for it, so the file is
+         * checked rather than the row believed.
+         */
+        val localAudio = download?.let { java.io.File(context.filesDir, "filterpod/${it.fileKey}") }
+        val hasLocalAudio = download?.state == DownloadState.DOWNLOADED &&
+            localAudio != null && localAudio.length() > 0
+        if (download?.state == DownloadState.DOWNLOADED && !hasLocalAudio) {
+            android.util.Log.i("FilterPod", "download for $episodeId is gone; streaming instead")
+            repo.patchDownload(episodeId) { it.copy(state = DownloadState.FAILED, error = "file missing") }
+        }
+
+        currentPin = if (hasLocalAudio) null
+        else StreamPin.forEpisode(context, episodeId, episode.audioUrl)
+        // What the spans about to be written are timed against: the file itself when
+        // there is one, otherwise the assembled copy just pinned.
+        currentAudioIdentity =
+            if (hasLocalAudio) "file${localAudio!!.length()}" else currentPin?.identity
+
         // The playhead's pipeline owns the transcriber; a background prefilter build
         // in flight yields now rather than making the lead-in queue behind it.
         onLiveSessionStarting()
@@ -346,19 +378,29 @@ class PlaybackController(
         if (autoPlay) play()
     }
 
+    /** The assembled copy the current episode is pinned to, when it is streaming. */
+    private var currentPin: StreamPin.Pin? = null
+
+    /** Which copy of the audio the current session's spans are timed against. */
+    private var currentAudioIdentity: String? = null
+
     private fun startServiceForLoad(
         episode: Episode,
         podcast: Podcast?,
         fileKey: String,
         startAtSec: Double,
     ) {
+        val pin = currentPin
+        val streamUrl = pin?.url ?: episode.audioUrl
+        val cacheKey = pin?.cacheKey(episode.id)
         val request = PlaybackService.Companion.LoadRequest(
-            url = episode.audioUrl,
+            url = streamUrl,
             title = episode.title,
             artist = podcast?.title ?: "",
             artworkUrl = episode.artworkUrl ?: podcast?.artworkUrl,
             startAtMs = (startAtSec * 1000).toLong(),
             episodeId = episode.id,
+            cacheKey = cacheKey,
         )
         val running = service()
         if (running != null) {
@@ -370,7 +412,7 @@ class PlaybackController(
             context.startForegroundService(Intent(context, PlaybackService::class.java))
         }
         // MediaCache prefetch for streams, mirroring the plugin's load path.
-        MediaCache.prefetch(context, episode.audioUrl)
+        MediaCache.prefetch(context, streamUrl, cacheKey)
     }
 
     /**
@@ -400,7 +442,24 @@ class PlaybackController(
             return
         }
 
-        val valid = repo.getValidFilterMap(episode.id, profile.id)
+        val stored = repo.getValidFilterMap(episode.id, profile.id)
+        /*
+         * A map is only a head start for the copy it was timed against. When the copy
+         * has changed — a new ad stitch, days later or after a network change — its
+         * spans point into audio nobody is going to play, so it is discarded rather
+         * than trusted. Maps with no recorded identity predate this and are kept: they
+         * are no worse than they were, and re-analysing every episode at once is a
+         * heavier cost than the risk.
+         */
+        val pinIdentity = currentAudioIdentity
+        val staleCopy = StreamPin.isStale(stored?.audioIdentity, pinIdentity)
+        if (staleCopy) {
+            android.util.Log.i(
+                "FilterPod",
+                "filter map discarded: timed against ${stored?.audioIdentity}, now $pinIdentity",
+            )
+        }
+        val valid = if (staleCopy) null else stored
         var seedSpans = valid?.spans ?: emptyList()
         var seedRanges = valid?.analyzedRanges ?: emptyList()
         var source = "asr"
@@ -434,7 +493,8 @@ class PlaybackController(
             LiveFilterEngine.Config(
                 episodeId = episode.id,
                 fileKey = "audio/${episode.id}",
-                streamUrl = episode.audioUrl,
+                streamUrl = currentPin?.url ?: episode.audioUrl,
+                cacheKey = currentPin?.cacheKey(episode.id),
                 model = repo.getSettings().whisperModel,
                 profileId = profile.id,
                 padBeforeSec = profile.padBeforeSec,
@@ -470,6 +530,7 @@ class PlaybackController(
     }
 
     private suspend fun persistFilterMap(session: LiveFilterEngine.Snapshot) {
+        val identity = currentAudioIdentity
         val existing = repo.getFilterMap(session.episodeId)
         repo.putFilterMap(
             FilterMap(
@@ -486,6 +547,7 @@ class PlaybackController(
                 progress = if (session.durationSec > 0) {
                     minOf(1.0, SpanMath.analyzedSec(session.ranges) / session.durationSec)
                 } else 0.0,
+                audioIdentity = identity,
                 createdAt = existing?.createdAt ?: System.currentTimeMillis(),
                 skippedSec = SpanMath.totalSkippedSec(session.spans),
             ),

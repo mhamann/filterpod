@@ -143,6 +143,12 @@ object TranscriptionCore {
         model: String,
         startSec: Double?,
         endSec: Double?,
+        /**
+         * Which assembled copy of the episode to read, when streaming. The player reads
+         * the same one; without this the decoder can be handed a differently
+         * ad-stitched copy and time every word against audio nobody will hear.
+         */
+        cacheKey: String? = null,
     ): List<TimedWord> = withContext(dispatcher) {
         val powerManager = context.getSystemService(Context.POWER_SERVICE)
             as android.os.PowerManager
@@ -176,7 +182,7 @@ object TranscriptionCore {
             val pcm = withTimeout(DECODE_TIMEOUT_MS) {
                 runInterruptible {
                     if (streaming) {
-                        MediaCache.openForDecoding(context, streamUrl!!).use { source ->
+                        MediaCache.openForDecoding(context, streamUrl!!, cacheKey).use { source ->
                             AudioDecoder.decodeWindow(source, fileKey, startSec, endSec)
                         }
                     } else {

@@ -188,6 +188,17 @@ data class FilterMap(
     val wordlistVersion: String,
     /** Which profile the spans were built under; a mismatch discards the map. */
     val profileId: String? = null,
+    /**
+     * Which assembled copy of the audio these spans were timed against.
+     *
+     * An ad-supported enclosure is stitched per request, so two copies of the same
+     * episode agree until the first ad break and then differ by however much the ads
+     * differ. A second only means something against one copy; carrying spans from one
+     * onto another puts every cut in the wrong place, and the failure is silent —
+     * the spans still arrive and the cut count still looks right. Null for downloads,
+     * which are a single file, and for maps written before this was recorded.
+     */
+    val audioIdentity: String? = null,
     val progress: Double = 0.0,
     val error: String? = null,
     val createdAt: Long,

@@ -130,7 +130,7 @@ object MediaCache {
      * has its own size limit, sequential fetching is by far the cheapest way to ask for
      * bytes, and a listener who pressed play will most likely want the rest of it.
      */
-    fun prefetch(context: Context, url: String) {
+    fun prefetch(context: Context, url: String, cacheKey: String? = null) {
         val current = prefetching
         if (current?.first == url && current.second.isAlive) return
         current?.second?.interrupt()
@@ -140,7 +140,7 @@ object MediaCache {
             runCatching {
                 CacheWriter(
                     dataSourceFactory(context).createDataSource(),
-                    DataSpec.Builder().setUri(url).build(),
+                    DataSpec.Builder().setUri(url).setKey(cacheKey).build(),
                     null,
                 ) { requested, cached, _ ->
                     if (Thread.currentThread().isInterrupted) throw InterruptedException()
@@ -169,12 +169,13 @@ object MediaCache {
      * being transcribed — and every one of those reads is served from the cache when the
      * bytes are already there, which after read-ahead they usually are.
      */
-    fun openForDecoding(context: Context, url: String): MediaDataSource =
-        CacheBackedSource(dataSourceFactory(context).createDataSource(), url)
+    fun openForDecoding(context: Context, url: String, cacheKey: String? = null): MediaDataSource =
+        CacheBackedSource(dataSourceFactory(context).createDataSource(), url, cacheKey)
 
     private class CacheBackedSource(
         private val source: androidx.media3.datasource.DataSource,
         private val url: String,
+        private val cacheKey: String?,
     ) : MediaDataSource() {
 
         private var opened = false
@@ -200,7 +201,11 @@ object MediaCache {
         private fun openAt(position: Long) {
             close()
             val resolved = source.open(
-                DataSpec.Builder().setUri(url).setPosition(position).build(),
+                DataSpec.Builder().setUri(url).setPosition(position)
+                    // Keyed by the stitch, not the URL: cached bytes from one assembled
+                    // copy must never be served as part of another.
+                    .setKey(cacheKey)
+                    .build(),
             )
             opened = true
             openPosition = position

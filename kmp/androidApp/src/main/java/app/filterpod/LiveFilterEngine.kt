@@ -67,6 +67,8 @@ class LiveFilterEngine(
         val streamUrl: String?,
         val model: String,
         val profileId: String,
+        /** Cache key for the pinned copy, so the decoder reads the audio being played. */
+        val cacheKey: String? = null,
         val padBeforeSec: Double,
         val padAfterSec: Double,
         val mergeGapSec: Double,
@@ -242,6 +244,7 @@ class LiveFilterEngine(
                 session.config.model,
                 startSec,
                 endSec,
+                session.config.cacheKey,
             )
         }
         session.chunk = chunk
@@ -374,6 +377,7 @@ class LiveFilterEngine(
                 .put("profileId", session.config.profileId)
                 .put("engineVersion", session.config.engineVersion)
                 .put("wordlistVersion", session.config.wordlistVersion)
+                .put("cacheKey", session.config.cacheKey ?: "")
                 .put("spans", spans)
                 .put("ranges", ranges)
                 .put("updatedAt", System.currentTimeMillis())
@@ -392,6 +396,8 @@ class LiveFilterEngine(
             if (json.optString("profileId") != config.profileId) return null
             if (json.optString("engineVersion") != config.engineVersion) return null
             if (json.optString("wordlistVersion") != config.wordlistVersion) return null
+            // Resumed work belongs to the copy it was done against, same as the map.
+            if (json.optString("cacheKey") != (config.cacheKey ?: "")) return null
 
             val spans = ArrayList<EngineSpan>()
             json.optJSONArray("spans")?.let { array ->

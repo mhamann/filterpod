@@ -74,6 +74,11 @@ val DEFAULT_SETTINGS = Settings()
  * away from where it claimed. Their spans point at the wrong audio — the word plays
  * and clean speech just after it is cut instead — so they cannot be trusted as a head
  * start, however complete they look.
+ *
+ * 5: and every map before this one recorded nothing about which copy of the audio it
+ * was timed against, so none of them can be checked against the copy being played.
+ * An ad-supported episode is assembled per request; a map that outlives its copy puts
+ * every cut in the wrong place while still looking complete.
  */
-const val ENGINE_VERSION = "4"
+const val ENGINE_VERSION = "5"
 const val WORDLIST_VERSION = "1"
