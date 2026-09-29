@@ -63,3 +63,10 @@ export function parseStart(raw: string | null): number | null {
   if (parts.length > 3 || !parts.every((p) => /^\d+$/.test(p))) return null;
   return parts.reduce((acc, p) => acc * 60 + Number(p), 0) || null;
 }
+
+/** Two spellings of one feed URL: scheme, www and trailing slashes don't count. */
+export function sameFeed(a: string, b: string): boolean {
+  const norm = (u: string) =>
+    u.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "");
+  return norm(a) === norm(b);
+}

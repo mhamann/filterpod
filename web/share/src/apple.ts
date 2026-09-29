@@ -1,13 +1,16 @@
 import type { Show } from "./feed";
 import { cacheOk } from "./cache";
+import { sameFeed } from "./links";
+import { itunesIdForShow, type PodcastIndexCreds } from "./podcastindex";
 
 /**
  * Finds a feed in Apple's podcast directory.
  *
- * The directory's id is what most "open in" links want, and the only public way from
- * a feed URL to that id without an API key is to search by title and keep the result
- * whose feedUrl is ours. Anything looser is dropped: a wrong show behind an "Apple
- * Podcasts" button is worse than no button.
+ * The directory's id is what most "open in" links want. Podcast Index gives it by
+ * exact feed URL (see podcastindex.ts), so that is asked first. Failing that, Apple
+ * is searched by title and only the result whose feedUrl is ours is kept — Apple
+ * rate-limits the Worker, so this fallback often comes back empty. Anything looser is
+ * dropped: a wrong show behind an "Apple Podcasts" button is worse than no button.
  */
 
 export interface AppleShow {
@@ -42,13 +45,11 @@ async function itunes(url: string): Promise<any[]> {
   }
 }
 
-export function sameFeed(a: string, b: string): boolean {
-  const norm = (u: string) =>
-    u.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "");
-  return norm(a) === norm(b);
-}
+export async function findAppleShow(show: Show, creds: PodcastIndexCreds = {}): Promise<AppleShow | null> {
+  const indexed = await itunesIdForShow(show, creds);
+  // Apple redirects this short form to the show's full URL.
+  if (indexed) return { collectionId: indexed, url: `https://podcasts.apple.com/podcast/id${indexed}` };
 
-export async function findAppleShow(show: Show): Promise<AppleShow | null> {
   const params = new URLSearchParams({ term: show.title, media: "podcast", entity: "podcast", limit: "25" });
   const results = (await itunes(`${SEARCH}?${params}`)).filter((r) => r.collectionId);
   // Apple sometimes holds an older feed URL than the one being shared (a host move).

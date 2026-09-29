@@ -50,5 +50,6 @@ docs/store/raw/
 # Release signing material — never committed.
 keystore/
 
-# Wrangler's local dev state for the share worker.
+# Wrangler's local dev state for the share worker, and its local secrets.
 .wrangler/
+.dev.vars
