@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "filterpod-share",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  // PRIVACY.md at the repo root is bundled as text and served at /privacy.
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  // The page is an advertisement, not an analytics funnel: nothing about who opened
+  // which link is kept. Workers Logs stays off so request details are never stored.
+  "observability": { "enabled": false },
+  // Keys the page cache, so a deploy never serves pages rendered by the old code.
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  // filterpod.app is the whole site for now: the pitch at /, share pages under /p and /e.
+  // www redirects to the apex (see index.ts); the workers.dev address stays off so
+  // there is one public URL per page.
+  "routes": [
+    { "pattern": "filterpod.app", "custom_domain": true },
+    { "pattern": "www.filterpod.app", "custom_domain": true }
+  ],
+  "workers_dev": false
+}

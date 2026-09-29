@@ -141,8 +141,8 @@ old React interface and no longer resembles what installs.
   Regenerating them means driving the UI by element bounds rather than guessed
   coordinates — `adb shell uiautomator dump` gives the centres to tap.
 
-- **Privacy policy URL** — required field. `PRIVACY.md` in the repo root; use the GitHub
-  URL: `https://github.com/mhamann/filterpod/blob/main/PRIVACY.md`.
+- **Privacy policy URL** — required field. `https://filterpod.app/privacy`, which renders
+  `PRIVACY.md` from the repo root on every deploy of the share worker (`web/share`).
 
 ## Data safety form
 

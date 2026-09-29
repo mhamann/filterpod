@@ -4,8 +4,24 @@
     {
       "name": "filterpod-dev",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
+      "runtimeArgs": [
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "share-worker",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "web/share",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "8787"
+      ],
+      "port": 8787
     }
   ]
 }

@@ -49,3 +49,6 @@ docs/store/raw/
 
 # Release signing material — never committed.
 keystore/
+
+# Wrangler's local dev state for the share worker.
+.wrangler/
