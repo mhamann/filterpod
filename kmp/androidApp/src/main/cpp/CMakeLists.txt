@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # whisper.cpp is vendored rather than pulled from a package manager: there is no
 # maintained Android artifact, and we need control over the build flags below.
-# Run `./gradlew vendorWhisper` (or scripts/vendor-whisper.sh) to populate this.
+# Run scripts/vendor-whisper.sh from the repo root to populate this.
 set(WHISPER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp)
 
 if(NOT EXISTS ${WHISPER_DIR}/CMakeLists.txt)

@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # Vendored by scripts/vendor-whisper.sh, not committed.
-android/app/src/main/cpp/whisper.cpp/
+kmp/androidApp/src/main/cpp/whisper.cpp/
 
 # Capacitor build output and generated config.
 android/app/src/main/assets/public/
