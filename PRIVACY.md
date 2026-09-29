@@ -43,12 +43,15 @@ the user explicitly selects.
 FilterPod itself talks to these third parties only to provide requested app functionality:
 
 1. **Apple's public podcast directory** (`itunes.apple.com`,
-   `rss.marketingtools.apple.com`) — when you search for or browse podcasts. Your
-   search terms are sent to Apple to run the search. Apple's own privacy policy
-   applies to those requests.
+   `rss.marketingtools.apple.com`) — when you search for or browse podcasts, and when
+   you share a show you get through a members-only feed (to find its public version,
+   by the show's name and author). Your search terms are sent to Apple to run the
+   search. Apple's own privacy policy applies to those requests.
 2. **Podcast publishers' servers** — to fetch the RSS feeds you subscribe to and the
-   audio you play. As with every podcast app, the publisher (or their hosting
-   provider) sees a standard HTTP request: your IP address and the app's user agent.
+   audio you play, and, when you share from a members-only feed, that show's public
+   feed. As with every podcast app, the publisher (or their hosting provider) sees a
+   standard HTTP request: your IP address and the app's user agent. A members-only
+   feed's address is never put in a share link.
 
 3. **GitHub release assets** — to download the speech-recognition model selected in the
    app. The model runs locally after download.

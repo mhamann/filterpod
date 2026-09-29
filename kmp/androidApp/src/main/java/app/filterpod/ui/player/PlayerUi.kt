@@ -67,6 +67,7 @@ import app.filterpod.shared.chapters.getChapters
 import app.filterpod.shared.model.Chapter
 import app.filterpod.shared.model.Episode
 import app.filterpod.shared.model.Podcast
+import app.filterpod.shared.share.ShareLinks
 import app.filterpod.toEngine
 import app.filterpod.ui.Ember
 import app.filterpod.ui.components.Artwork
@@ -517,7 +518,9 @@ fun NowPlayingScreen(
 
 /**
  * Share, with a choice: the episode, the episode from right here, or the whole show.
- * The position is read when the menu opens, so the label and the link agree.
+ * The position is read when the menu opens, so the label and the link agree. A
+ * members-only episode is shared as its public copy, where ads put the same second
+ * somewhere else, so it gets no "from here".
  */
 @Composable
 private fun ShareButton(podcast: Podcast, episode: Episode, positionSec: () -> Double) {
@@ -533,7 +536,7 @@ private fun ShareButton(podcast: Podcast, episode: Episode, positionSec: () -> D
                 text = { Text("Share episode") },
                 onClick = { open = false; share.episode(podcast, episode) },
             )
-            if (at >= 1) {
+            if (at >= 1 && !ShareLinks.isPrivateFeed(podcast.feedUrl)) {
                 DropdownMenuItem(
                     text = { Text("Share from ${timecode(at)}") },
                     onClick = { open = false; share.episode(podcast, episode, atSec = at) },

@@ -62,6 +62,27 @@ class FilterPodApp : Application(), coil3.SingletonImageLoader.Factory {
         private set
 
     /**
+     * Public twins of members-only feeds, for sharing. Lazy: most sessions never share,
+     * and nothing here should cost a byte of startup.
+     */
+    val publicCounterparts: app.filterpod.shared.share.PublicCounterparts by lazy {
+        val discovery = app.filterpod.shared.discovery.Discovery(http)
+        app.filterpod.shared.share.PublicCounterparts(
+            search = { term -> discovery.searchPodcasts(term).map { it.podcast } },
+            episodesOf = { feedUrl ->
+                val response = http.get(feedUrl)
+                check(response.status == 200) { "public feed returned HTTP ${response.status}" }
+                kotlinx.coroutines.withContext(Dispatchers.Default) {
+                    app.filterpod.shared.feeds.parseFeed(
+                        response.bodyText(), feedUrl,
+                        app.filterpod.shared.feeds.XmlFeedReader(), System.currentTimeMillis(),
+                    ).episodes
+                }
+            },
+        )
+    }
+
+    /**
      * Show to open because a notification was tapped; the UI consumes and clears it.
      */
     val pendingPodcastId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
