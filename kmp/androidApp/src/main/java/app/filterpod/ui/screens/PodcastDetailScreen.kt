@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -70,6 +71,7 @@ import app.filterpod.ui.components.Pill
 import app.filterpod.ui.components.PillTone
 import app.filterpod.ui.components.RefreshBox
 import app.filterpod.ui.components.SectionLabel
+import app.filterpod.ui.rememberSharer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -177,6 +179,7 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
      * search results are different ways of choosing which episodes to show, not
      * different kinds of episode.
      */
+    val share = rememberSharer()
     val episodeRow: @Composable (Episode) -> Unit = { episode ->
         EpisodeRow(
             episode = episode,
@@ -200,6 +203,7 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                     if (next) repo.removeFromQueue(episode.id)
                 }
             },
+            onShare = { share.episode(current, episode) },
             expanded = episode.id in expandedIds,
             onToggleExpand = {
                 expandedIds =
@@ -258,6 +262,9 @@ fun PodcastDetailScreen(nav: NavState, podcastId: String) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                         }
                         SectionLabel(current.author, Modifier.weight(1f))
+                        IconButton(onClick = { share.podcast(current) }) {
+                            Icon(Icons.Filled.Share, "Share podcast")
+                        }
                         IconButton(onClick = { searching = true }) {
                             Icon(Icons.Filled.Search, "Search episodes")
                         }

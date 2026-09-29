@@ -34,6 +34,8 @@ describe("feed tokens", () => {
     const path = episodePath("https://ex.com/f.rss", "guid-1", 90.7);
     expect(path).toBe(`/e/${encodeFeed("https://ex.com/f.rss")}/${fnv1a("guid-1")}?t=90`);
     expect(episodePath("https://ex.com/f.rss", "guid-1")).not.toContain("?t=");
+    // Under a second is no position — ShareLinks.kt draws the same line.
+    expect(episodePath("https://ex.com/f.rss", "guid-1", 0.4)).not.toContain("?t=");
   });
 });
 

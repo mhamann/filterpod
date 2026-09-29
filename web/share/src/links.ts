@@ -51,7 +51,7 @@ export function podcastPath(feedUrl: string): string {
 }
 
 export function episodePath(feedUrl: string, guid: string, atSec?: number): string {
-  const t = atSec && atSec > 0 ? `?t=${Math.floor(atSec)}` : "";
+  const t = atSec && atSec >= 1 ? `?t=${Math.floor(atSec)}` : "";
   return `/e/${encodeFeed(feedUrl)}/${fnv1a(guid)}${t}`;
 }
 
