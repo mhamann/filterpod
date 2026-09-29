@@ -25,9 +25,10 @@ const SECURITY_HEADERS: Record<string, string> = {
     "default-src 'none'",
     "img-src 'self' https: data:",
     "style-src 'unsafe-inline'",
-    // Cloudflare Web Analytics: its beacon script, and where the beacon reports.
+    // Cloudflare Web Analytics: its beacon script, and where the beacon reports —
+    // this origin's /cdn-cgi/rum when the zone injects it, its own host otherwise.
     "script-src 'self' https://static.cloudflareinsights.com",
-    "connect-src https://cloudflareinsights.com",
+    "connect-src 'self' https://cloudflareinsights.com",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
