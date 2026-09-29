@@ -33,7 +33,9 @@ the episode's guid, the same hash that ends the app's episode ids (see
   to Google Play once the app is listed there.
 
 Rendered pages are cached at the edge for 10 minutes, keyed by deployed version.
-Workers observability is off, so no request logs are kept (see PRIVACY.md).
+Workers observability is off, so no request logs are kept. Visits are counted by
+Cloudflare Web Analytics, which the zone injects; the CSP allows its beacon (see
+PRIVACY.md).
 
 ## Develop and deploy
 

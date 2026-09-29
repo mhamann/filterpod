@@ -1,6 +1,6 @@
 # FilterPod Privacy Policy
 
-*Last updated: September 28, 2026*
+*Last updated: September 29, 2026*
 
 FilterPod does not collect your data. The app never talks to a FilterPod server, and
 there is no account, no analytics, no advertising SDK, and no crash reporting. Nothing
@@ -64,10 +64,15 @@ derived from that episode — nothing about who shared it or who opens it.
 
 To draw the page, the Worker fetches that public feed, looks the show up in Apple's
 public podcast directory (to offer "open in your app" links), and asks GitHub for the
-latest FilterPod release. It sets no cookies, runs no analytics, and keeps no request
-logs. Cloudflare, which runs it, handles those requests — including the visitor's IP
-address — under its own privacy policy. The page shows the podcast's artwork straight
-from the publisher's servers, which see an ordinary image request.
+latest FilterPod release. It sets no cookies and keeps no request logs. Cloudflare,
+which runs it, handles those requests — including the visitor's IP address — under its
+own privacy policy. The page shows the podcast's artwork straight from the publisher's
+servers, which see an ordinary image request.
+
+Visits to filterpod.app are counted with Cloudflare Web Analytics. It uses no cookies
+and does not identify individual visitors; what reaches us is aggregate — which pages
+were viewed (so, which shared shows and episodes), where visits came from, and the
+country and type of browser or device.
 
 ## Children
 

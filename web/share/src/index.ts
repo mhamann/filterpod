@@ -25,7 +25,9 @@ const SECURITY_HEADERS: Record<string, string> = {
     "default-src 'none'",
     "img-src 'self' https: data:",
     "style-src 'unsafe-inline'",
-    "script-src 'self'",
+    // Cloudflare Web Analytics: its beacon script, and where the beacon reports.
+    "script-src 'self' https://static.cloudflareinsights.com",
+    "connect-src https://cloudflareinsights.com",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
@@ -124,11 +126,13 @@ async function route(request: Request): Promise<Response> {
   } catch (e) {
     const reason = e instanceof FeedError ? e.message : "the request failed";
     console.warn(`feed unavailable: ${reason}`);
-    return page(
-      homePage(await releasePromise, canonical, "We couldn't reach that podcast's feed just now. Try again in a bit."),
-      502,
-      60,
-    );
+    // A 404 or 410 is a feed that moved without a redirect or was taken down;
+    // telling someone to try again later would be a lie.
+    const gone = e instanceof FeedError && (e.status === 404 || e.status === 410);
+    const notice = gone
+      ? "That podcast's feed has moved or been taken down, so this link can't show it anymore."
+      : "We couldn't reach that podcast's feed just now. Try again in a bit.";
+    return page(homePage(await releasePromise, canonical, notice), gone ? 404 : 502, 60);
   }
 }
 
