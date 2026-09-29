@@ -12,6 +12,7 @@
  */
 
 import { fnv1a } from "./links";
+import { cacheOk } from "./cache";
 
 export interface Show {
   feedUrl: string;
@@ -66,7 +67,7 @@ export async function readFeed(
       Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.1",
     },
     signal: AbortSignal.timeout(10_000),
-    cf: { cacheTtl: 900, cacheEverything: true },
+    cf: cacheOk(900),
   });
   if (!response.ok || !response.body) throw new FeedError(`feed returned HTTP ${response.status}`, response.status);
 

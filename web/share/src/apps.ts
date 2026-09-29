@@ -11,6 +11,7 @@
 
 import type { AppleEpisode, AppleShow } from "./apple";
 import type { Item, Show } from "./feed";
+import { cacheOk } from "./cache";
 
 export type Platform = "android" | "ios" | "web";
 
@@ -95,7 +96,8 @@ export async function resolveCastro(apple: AppleShow | null): Promise<string | n
     const response = await fetch(`https://castro.fm/itunes/${apple.collectionId}`, {
       redirect: "manual",
       signal: AbortSignal.timeout(3_000),
-      cf: { cacheTtl: 86_400, cacheEverything: true },
+      // The answer is a redirect, so redirects are what gets kept.
+      cf: cacheOk(86_400, "300-399"),
     });
     const location = response.headers.get("Location");
     if (!location) return null;

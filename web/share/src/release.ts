@@ -7,6 +7,8 @@
  * When the app lands on Google Play, this is the one place that changes.
  */
 
+import { cacheOk } from "./cache";
+
 export const REPO = "mhamann/filterpod";
 export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
@@ -25,7 +27,7 @@ export async function latestRelease(): Promise<Release> {
         Accept: "application/vnd.github+json",
       },
       signal: AbortSignal.timeout(4_000),
-      cf: { cacheTtl: 3_600, cacheEverything: true },
+      cf: cacheOk(3_600),
     });
     if (!response.ok) return fallback;
     const body = (await response.json()) as {
