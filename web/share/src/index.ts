@@ -16,6 +16,7 @@ import { FeedError, readFeed } from "./feed";
 import { decodeFeed, parseStart, podcastPath } from "./links";
 import { episodePage, homePage, podcastPage, privacyPage, SCRIPT } from "./page";
 import { PRIVACY_HTML } from "./privacy";
+import type { PodcastIndexCreds } from "./podcastindex";
 import { latestRelease } from "./release";
 
 const PAGE_TTL = 600;
@@ -64,7 +65,7 @@ function canonicalUrl(url: URL): string {
   return url.origin + url.pathname + (start ? `?t=${start}` : "");
 }
 
-async function route(request: Request): Promise<Response> {
+async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean);
   const canonical = canonicalUrl(url);
@@ -91,7 +92,7 @@ async function route(request: Request): Promise<Response> {
   try {
     if (kind === "p") {
       const feed = await readFeed(feedUrl, { maxItems: 5 });
-      const apple = await findAppleShow(feed.show);
+      const apple = await findAppleShow(feed.show, env);
       const castroUrl = await resolveCastro(apple);
       return page(
         podcastPage({
@@ -109,7 +110,7 @@ async function route(request: Request): Promise<Response> {
     // Publishers prune old episodes; the show is still worth landing on.
     if (!item) return Response.redirect(url.origin + podcastPath(feedUrl), 302);
 
-    const apple = await findAppleShow(feed.show);
+    const apple = await findAppleShow(feed.show, env);
     const [appleEpisode, castroUrl] = await Promise.all([
       apple ? findAppleEpisode(apple.collectionId, item.guid) : null,
       resolveCastro(apple),
@@ -137,7 +138,7 @@ async function route(request: Request): Promise<Response> {
   }
 }
 
-interface Env {
+interface Env extends PodcastIndexCreds {
   CF_VERSION_METADATA: WorkerVersionMetadata;
 }
 
@@ -159,7 +160,7 @@ export default {
     const hit = await cache.match(key);
     if (hit) return hit;
 
-    const response = await route(request);
+    const response = await route(request, env);
     if (response.status === 200) ctx.waitUntil(cache.put(key, response.clone()));
     return response;
   },

@@ -21,10 +21,12 @@ the episode's guid, the same hash that ends the app's episode ids (see
 - **Feed** (`src/feed.ts`): the feed is streamed and dropped once the show header
   and the wanted episode have arrived. The guid rule copies `ParseFeed.kt`
   exactly, because the link's hash depends on it.
-- **Apple** (`src/apple.ts`): searches the iTunes directory by title and keeps the
-  result whose `feedUrl` matches. It falls back to an exact title and author
-  match. The episode comes from `lookup?entity=podcastEpisode` by `episodeGuid`,
-  which only covers recent episodes.
+- **Apple** (`src/apple.ts`, `src/podcastindex.ts`): the show's Apple id comes
+  from Podcast Index's exact feed-URL lookup. Only if that has none does it search
+  Apple by title and keep the result whose `feedUrl` matches, or an exact title
+  and author match. Apple answers the Worker with HTTP 429 more often than not, so
+  that fallback, and the episode lookup (`lookup?entity=podcastEpisode` by
+  `episodeGuid`, recent episodes only), are best-effort.
 - **Other apps** (`src/apps.ts`): only link formats checked against each app's
   source code or live redirects. Pocket Casts and Castro need Apple's id.
   AntennaPod and Podcast Addict take the feed. Overcast gets its iOS scheme.
@@ -36,6 +38,19 @@ Rendered pages are cached at the edge for 10 minutes, keyed by deployed version.
 Workers observability is off, so no request logs are kept. Visits are counted by
 Cloudflare Web Analytics, which the zone injects; the CSP allows its beacon (see
 PRIVACY.md).
+
+## Secrets
+
+Podcast Index credentials are Worker secrets, set once and kept through deploys:
+
+```bash
+npx wrangler secret put PODCASTINDEX_API_KEY
+npx wrangler secret put PODCASTINDEX_API_SECRET
+```
+
+For `npm run dev`, put the same two names in `web/share/.dev.vars`
+(`NAME=value`, one per line; git ignores it). Without them the Worker still runs
+and falls back to Apple's search.
 
 ## Develop and deploy
 
