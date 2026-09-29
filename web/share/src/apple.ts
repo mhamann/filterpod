@@ -1,4 +1,5 @@
 import type { Show } from "./feed";
+import { cacheOk } from "./cache";
 
 /**
  * Finds a feed in Apple's podcast directory.
@@ -26,12 +27,17 @@ async function itunes(url: string): Promise<any[]> {
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(5_000),
-      cf: { cacheTtl: 86_400, cacheEverything: true },
+      cf: cacheOk(86_400),
     });
-    if (!response.ok) return [];
+    if (!response.ok) {
+      // Status only: Workers logs are off, so this is visible to a live `wrangler tail` and nowhere else.
+      console.warn(`itunes lookup failed: HTTP ${response.status}`);
+      return [];
+    }
     const body = (await response.json()) as { results?: unknown };
     return Array.isArray(body.results) ? body.results : [];
-  } catch {
+  } catch (e) {
+    console.warn(`itunes lookup failed: ${e instanceof Error ? e.name : "error"}`);
     return [];
   }
 }

@@ -176,8 +176,8 @@ function footer(opts: { show?: string } = {}): Raw {
   return html`<footer>
     ${opts.show ? html`<p>FilterPod isn't affiliated with ${opts.show}.</p>` : ""}
     <p>
-      ${opts.show ? "This page read the show's public feed to draw itself. " : ""}No cookies, no
-      tracking. <a href="/privacy">Privacy</a> · <a href="/">About FilterPod</a>
+      ${opts.show ? "This page read the show's public feed to draw itself. " : ""}No cookies;
+      visits are counted in aggregate. <a href="/privacy">Privacy</a> · <a href="/">About FilterPod</a>
     </p>
   </footer>`;
 }

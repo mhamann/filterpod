@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,9 +16,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -54,6 +57,7 @@ fun EpisodeRow(
     onPlay: () -> Unit,
     onToggleQueue: () -> Unit,
     onTogglePlayed: () -> Unit,
+    onShare: (() -> Unit)? = null,
     /** Tap-to-expand: full title and description for rows that want reading room. */
     expanded: Boolean = false,
     onToggleExpand: (() -> Unit)? = null,
@@ -156,7 +160,9 @@ fun EpisodeRow(
             }
 
             Row(
-                Modifier.padding(top = 12.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -200,6 +206,18 @@ fun EpisodeRow(
                             icon = FilterPodIcons.Download,
                             label = "Download",
                             onClick = { app.downloader.start(episode.id, episode.audioUrl) },
+                        )
+                    }
+                }
+
+                // Share sits apart from the toggles: it changes nothing about the episode.
+                if (onShare != null) {
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = onShare) {
+                        Icon(
+                            Icons.Filled.Share, "Share episode",
+                            Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

@@ -26,6 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -61,6 +65,9 @@ import app.filterpod.SpanMath
 import app.filterpod.shared.chapters.chapterAt
 import app.filterpod.shared.chapters.getChapters
 import app.filterpod.shared.model.Chapter
+import app.filterpod.shared.model.Episode
+import app.filterpod.shared.model.Podcast
+import app.filterpod.shared.share.ShareLinks
 import app.filterpod.toEngine
 import app.filterpod.ui.Ember
 import app.filterpod.ui.components.Artwork
@@ -71,6 +78,7 @@ import app.filterpod.ui.components.QueueBadgeButton
 import app.filterpod.ui.components.SectionLabel
 import app.filterpod.ui.components.linkified
 import app.filterpod.ui.components.ThinProgressBar
+import app.filterpod.ui.rememberSharer
 import app.filterpod.ui.timecode
 
 private val RATES = listOf(0.8, 1.0, 1.2, 1.5, 2.0)
@@ -233,15 +241,23 @@ fun NowPlayingScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Filled.KeyboardArrowDown, "Close")
+                // Equal-weight sides keep the label centred however many actions sit right.
+                Box(Modifier.weight(1f)) {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Filled.KeyboardArrowDown, "Close")
+                    }
                 }
                 SectionLabel("Now playing")
-                QueueBadgeButton(queueCount) {
-                    // The panel is an overlay: close on the way to the queue so the
-                    // transition reads as going somewhere.
-                    onClose()
-                    onOpenQueue()
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+                    state.podcast?.let { podcast ->
+                        ShareButton(podcast, episode, positionSec = { controller.state.value.positionSec })
+                    }
+                    QueueBadgeButton(queueCount) {
+                        // The panel is an overlay: close on the way to the queue so the
+                        // transition reads as going somewhere.
+                        onClose()
+                        onOpenQueue()
+                    }
                 }
             }
 
@@ -496,6 +512,40 @@ fun NowPlayingScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Share, with a choice: the episode, the episode from right here, or the whole show.
+ * The position is read when the menu opens, so the label and the link agree. A
+ * members-only episode is shared as its public copy, where ads put the same second
+ * somewhere else, so it gets no "from here".
+ */
+@Composable
+private fun ShareButton(podcast: Podcast, episode: Episode, positionSec: () -> Double) {
+    val share = rememberSharer()
+    var open by remember { mutableStateOf(false) }
+    var at by remember { mutableDoubleStateOf(0.0) }
+    Box {
+        IconButton(onClick = { at = positionSec(); open = true }) {
+            Icon(Icons.Filled.Share, "Share")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Share episode") },
+                onClick = { open = false; share.episode(podcast, episode) },
+            )
+            if (at >= 1 && !ShareLinks.isPrivateFeed(podcast.feedUrl)) {
+                DropdownMenuItem(
+                    text = { Text("Share from ${timecode(at)}") },
+                    onClick = { open = false; share.episode(podcast, episode, atSec = at) },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Share podcast") },
+                onClick = { open = false; share.podcast(podcast) },
+            )
         }
     }
 }

@@ -12,6 +12,7 @@
  */
 
 import { fnv1a } from "./links";
+import { cacheOk } from "./cache";
 
 export interface Show {
   feedUrl: string;
@@ -42,7 +43,12 @@ export interface Feed {
   items: Item[];
 }
 
-export class FeedError extends Error {}
+export class FeedError extends Error {
+  /** The publisher's HTTP status, when the feed answered at all. */
+  constructor(message: string, readonly status?: number) {
+    super(message);
+  }
+}
 
 const MAX_BYTES = 24 * 1024 * 1024;
 const USER_AGENT = "FilterPodShare/1.0 (+https://github.com/mhamann/filterpod)";
@@ -61,9 +67,9 @@ export async function readFeed(
       Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.1",
     },
     signal: AbortSignal.timeout(10_000),
-    cf: { cacheTtl: 900, cacheEverything: true },
+    cf: cacheOk(900),
   });
-  if (!response.ok || !response.body) throw new FeedError(`feed returned HTTP ${response.status}`);
+  if (!response.ok || !response.body) throw new FeedError(`feed returned HTTP ${response.status}`, response.status);
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

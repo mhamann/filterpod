@@ -18,7 +18,7 @@ fun episodeIdFor(podcastId: String, guid: String): String = "e_${podcastId}_" + 
  * Not UTF-8: a guid containing a non-BMP character hashes over its surrogate pair
  * halves in JS, and this must reproduce that.
  */
-private fun fnv1a(input: String): String {
+internal fun fnv1a(input: String): String {
     var value = 0x811c9dc5.toInt()
     for (ch in input) {
         value = value xor ch.code

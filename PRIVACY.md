@@ -1,6 +1,6 @@
 # FilterPod Privacy Policy
 
-*Last updated: September 28, 2026*
+*Last updated: September 29, 2026*
 
 FilterPod does not collect your data. The app never talks to a FilterPod server, and
 there is no account, no analytics, no advertising SDK, and no crash reporting. Nothing
@@ -43,12 +43,15 @@ the user explicitly selects.
 FilterPod itself talks to these third parties only to provide requested app functionality:
 
 1. **Apple's public podcast directory** (`itunes.apple.com`,
-   `rss.marketingtools.apple.com`) — when you search for or browse podcasts. Your
-   search terms are sent to Apple to run the search. Apple's own privacy policy
-   applies to those requests.
+   `rss.marketingtools.apple.com`) — when you search for or browse podcasts, and when
+   you share a show you get through a members-only feed (to find its public version,
+   by the show's name and author). Your search terms are sent to Apple to run the
+   search. Apple's own privacy policy applies to those requests.
 2. **Podcast publishers' servers** — to fetch the RSS feeds you subscribe to and the
-   audio you play. As with every podcast app, the publisher (or their hosting
-   provider) sees a standard HTTP request: your IP address and the app's user agent.
+   audio you play, and, when you share from a members-only feed, that show's public
+   feed. As with every podcast app, the publisher (or their hosting provider) sees a
+   standard HTTP request: your IP address and the app's user agent. A members-only
+   feed's address is never put in a share link.
 
 3. **GitHub release assets** — to download the speech-recognition model selected in the
    app. The model runs locally after download.
@@ -64,10 +67,15 @@ derived from that episode — nothing about who shared it or who opens it.
 
 To draw the page, the Worker fetches that public feed, looks the show up in Apple's
 public podcast directory (to offer "open in your app" links), and asks GitHub for the
-latest FilterPod release. It sets no cookies, runs no analytics, and keeps no request
-logs. Cloudflare, which runs it, handles those requests — including the visitor's IP
-address — under its own privacy policy. The page shows the podcast's artwork straight
-from the publisher's servers, which see an ordinary image request.
+latest FilterPod release. It sets no cookies and keeps no request logs. Cloudflare,
+which runs it, handles those requests — including the visitor's IP address — under its
+own privacy policy. The page shows the podcast's artwork straight from the publisher's
+servers, which see an ordinary image request.
+
+Visits to filterpod.app are counted with Cloudflare Web Analytics. It uses no cookies
+and does not identify individual visitors; what reaches us is aggregate — which pages
+were viewed (so, which shared shows and episodes), where visits came from, and the
+country and type of browser or device.
 
 ## Children
 
